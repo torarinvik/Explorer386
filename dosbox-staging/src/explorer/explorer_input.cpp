@@ -298,28 +298,227 @@ void ResetInputStats()
 // =============================================================================
 // Random Input Generation
 // =============================================================================
+// Complete Action Space for Neural Network Control
+// =============================================================================
+
+// All available keyboard keys (complete DOS keyboard)
+static const KBD_KEYS ALL_KEYS[] = {
+    // Numbers (0-9) -> action IDs 0-9
+    KBD_0, KBD_1, KBD_2, KBD_3, KBD_4, KBD_5, KBD_6, KBD_7, KBD_8, KBD_9,
+    
+    // Letters (a-z) -> action IDs 10-35
+    KBD_a, KBD_b, KBD_c, KBD_d, KBD_e, KBD_f, KBD_g, KBD_h, KBD_i, KBD_j,
+    KBD_k, KBD_l, KBD_m, KBD_n, KBD_o, KBD_p, KBD_q, KBD_r, KBD_s, KBD_t,
+    KBD_u, KBD_v, KBD_w, KBD_x, KBD_y, KBD_z,
+    
+    // Function keys (F1-F12) -> action IDs 36-47
+    KBD_f1, KBD_f2, KBD_f3, KBD_f4, KBD_f5, KBD_f6,
+    KBD_f7, KBD_f8, KBD_f9, KBD_f10, KBD_f11, KBD_f12,
+    
+    // Arrow keys -> action IDs 48-51
+    KBD_up, KBD_down, KBD_left, KBD_right,
+    
+    // Common control keys -> action IDs 52-58
+    KBD_esc, KBD_tab, KBD_backspace, KBD_enter, KBD_space,
+    KBD_insert, KBD_delete,
+    
+    // Navigation -> action IDs 59-62
+    KBD_home, KBD_end, KBD_pageup, KBD_pagedown,
+    
+    // Modifiers -> action IDs 63-70
+    KBD_leftalt, KBD_rightalt,
+    KBD_leftctrl, KBD_rightctrl,
+    KBD_leftshift, KBD_rightshift,
+    KBD_capslock, KBD_numlock,
+    
+    // Numpad -> action IDs 71-86
+    KBD_kp0, KBD_kp1, KBD_kp2, KBD_kp3, KBD_kp4,
+    KBD_kp5, KBD_kp6, KBD_kp7, KBD_kp8, KBD_kp9,
+    KBD_kpenter, KBD_kpplus, KBD_kpminus, KBD_kpmultiply, KBD_kpdivide, KBD_kpperiod,
+    
+    // Punctuation/symbols -> action IDs 87-98
+    KBD_minus, KBD_equals, KBD_backslash,
+    KBD_leftbracket, KBD_rightbracket,
+    KBD_semicolon, KBD_quote, KBD_grave,
+    KBD_period, KBD_comma, KBD_slash,
+    KBD_scrolllock,
+};
+
+constexpr size_t NUM_KEYBOARD_ACTIONS = sizeof(ALL_KEYS) / sizeof(ALL_KEYS[0]);
+
+// Mouse action types (added after keyboard)
+// Action IDs: NUM_KEYBOARD_ACTIONS + 0..N
+enum class MouseAction : int {
+    MoveUp = 0,
+    MoveDown,
+    MoveLeft, 
+    MoveRight,
+    MoveUpLeft,
+    MoveUpRight,
+    MoveDownLeft,
+    MoveDownRight,
+    ClickLeft,
+    ClickRight,
+    ClickMiddle,
+    DoubleClickLeft,
+    WheelUp,
+    WheelDown,
+    NUM_MOUSE_ACTIONS
+};
+
+constexpr size_t NUM_MOUSE_ACTIONS = static_cast<size_t>(MouseAction::NUM_MOUSE_ACTIONS);
+constexpr size_t TOTAL_ACTIONS = NUM_KEYBOARD_ACTIONS + NUM_MOUSE_ACTIONS + 1; // +1 for NO_OP
+
+// =============================================================================
 
 void SetInputRandomSeed(uint32_t seed)
 {
     s_rng.seed(seed);
 }
 
+size_t GetNumActions()
+{
+    return TOTAL_ACTIONS;
+}
+
+size_t GetNumKeyboardActions()
+{
+    return NUM_KEYBOARD_ACTIONS;
+}
+
+size_t GetNumMouseActions()
+{
+    return NUM_MOUSE_ACTIONS;
+}
+
+const char* GetActionName(size_t action_id)
+{
+    static char buffer[64];
+    
+    if (action_id >= TOTAL_ACTIONS) {
+        return "INVALID";
+    }
+    
+    // NO_OP is the last action
+    if (action_id == TOTAL_ACTIONS - 1) {
+        return "NO_OP";
+    }
+    
+    // Keyboard actions
+    if (action_id < NUM_KEYBOARD_ACTIONS) {
+        const char* name = KeyCodeToName(ALL_KEYS[action_id]);
+        return name ? name : "UNKNOWN_KEY";
+    }
+    
+    // Mouse actions
+    size_t mouse_action = action_id - NUM_KEYBOARD_ACTIONS;
+    switch (static_cast<MouseAction>(mouse_action)) {
+        case MouseAction::MoveUp: return "MOUSE_UP";
+        case MouseAction::MoveDown: return "MOUSE_DOWN";
+        case MouseAction::MoveLeft: return "MOUSE_LEFT";
+        case MouseAction::MoveRight: return "MOUSE_RIGHT";
+        case MouseAction::MoveUpLeft: return "MOUSE_UP_LEFT";
+        case MouseAction::MoveUpRight: return "MOUSE_UP_RIGHT";
+        case MouseAction::MoveDownLeft: return "MOUSE_DOWN_LEFT";
+        case MouseAction::MoveDownRight: return "MOUSE_DOWN_RIGHT";
+        case MouseAction::ClickLeft: return "CLICK_LEFT";
+        case MouseAction::ClickRight: return "CLICK_RIGHT";
+        case MouseAction::ClickMiddle: return "CLICK_MIDDLE";
+        case MouseAction::DoubleClickLeft: return "DOUBLE_CLICK_LEFT";
+        case MouseAction::WheelUp: return "WHEEL_UP";
+        case MouseAction::WheelDown: return "WHEEL_DOWN";
+        default: return "UNKNOWN_MOUSE";
+    }
+}
+
+void InjectAction(size_t action_id, float mouse_magnitude)
+{
+    if (action_id >= TOTAL_ACTIONS) {
+        return; // Invalid action
+    }
+    
+    // NO_OP - do nothing
+    if (action_id == TOTAL_ACTIONS - 1) {
+        return;
+    }
+    
+    // Keyboard actions
+    if (action_id < NUM_KEYBOARD_ACTIONS) {
+        InjectKeyPress(ALL_KEYS[action_id]);
+        return;
+    }
+    
+    // Mouse actions
+    size_t mouse_action = action_id - NUM_KEYBOARD_ACTIONS;
+    float mag = mouse_magnitude;
+    
+    switch (static_cast<MouseAction>(mouse_action)) {
+        case MouseAction::MoveUp:
+            InjectMouseMove(0, -mag);
+            break;
+        case MouseAction::MoveDown:
+            InjectMouseMove(0, mag);
+            break;
+        case MouseAction::MoveLeft:
+            InjectMouseMove(-mag, 0);
+            break;
+        case MouseAction::MoveRight:
+            InjectMouseMove(mag, 0);
+            break;
+        case MouseAction::MoveUpLeft:
+            InjectMouseMove(-mag * 0.707f, -mag * 0.707f);
+            break;
+        case MouseAction::MoveUpRight:
+            InjectMouseMove(mag * 0.707f, -mag * 0.707f);
+            break;
+        case MouseAction::MoveDownLeft:
+            InjectMouseMove(-mag * 0.707f, mag * 0.707f);
+            break;
+        case MouseAction::MoveDownRight:
+            InjectMouseMove(mag * 0.707f, mag * 0.707f);
+            break;
+        case MouseAction::ClickLeft:
+            InjectMouseButton(0, true);
+            InjectMouseButton(0, false);
+            break;
+        case MouseAction::ClickRight:
+            InjectMouseButton(1, true);
+            InjectMouseButton(1, false);
+            break;
+        case MouseAction::ClickMiddle:
+            InjectMouseButton(2, true);
+            InjectMouseButton(2, false);
+            break;
+        case MouseAction::DoubleClickLeft:
+            InjectMouseButton(0, true);
+            InjectMouseButton(0, false);
+            InjectMouseButton(0, true);
+            InjectMouseButton(0, false);
+            break;
+        case MouseAction::WheelUp:
+            InjectMouseWheel(3);
+            break;
+        case MouseAction::WheelDown:
+            InjectMouseWheel(-3);
+            break;
+        default:
+            break;
+    }
+}
+
 void InjectRandomKey()
 {
-    // List of commonly useful keys for games
-    static const KBD_KEYS game_keys[] = {
-        KBD_up, KBD_down, KBD_left, KBD_right,
-        KBD_space, KBD_enter, KBD_esc,
-        KBD_a, KBD_s, KBD_d, KBD_w,
-        KBD_leftctrl, KBD_leftalt, KBD_leftshift,
-        KBD_1, KBD_2, KBD_3, KBD_4, KBD_5,
-        KBD_f1, KBD_f2, KBD_f3, KBD_f4, KBD_f5,
-        KBD_y, KBD_n,  // Yes/No prompts
-    };
-    
-    std::uniform_int_distribution<size_t> dist(0, sizeof(game_keys)/sizeof(game_keys[0]) - 1);
-    KBD_KEYS key = game_keys[dist(s_rng)];
+    // Use ALL keys, not just a subset - NN needs full exploration
+    std::uniform_int_distribution<size_t> dist(0, NUM_KEYBOARD_ACTIONS - 1);
+    KBD_KEYS key = ALL_KEYS[dist(s_rng)];
     InjectKeyPress(key);
+}
+
+void InjectRandomAction()
+{
+    // Random action from entire action space (including NO_OP)
+    std::uniform_int_distribution<size_t> dist(0, TOTAL_ACTIONS - 1);
+    InjectAction(dist(s_rng));
 }
 
 void InjectRandomMouseMove(float max_delta)

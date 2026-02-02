@@ -123,9 +123,41 @@ EXPLORER_LOG=/tmp/test.log EXPLORER_AUTO_RESTORE=1 EXPLORER_AUTO_SAVE=1 \
 ```
 
 ## Next Steps:
-- [ ] Test auto-restore with a game that has a working quit option
+- [ ] Train neural network with expanded action space
 - [ ] Profile instrumentation overhead
 - [ ] Phase 4: Policy/RL Integration (LibTorch PolicyAgent)
+
+## Neural Network Action Space ✅ NEW
+Complete action space for NN controller - **114 discrete actions**:
+
+**Keyboard Actions (99 total):**
+- Numbers 0-9: 10 actions (IDs 0-9)
+- Letters a-z: 26 actions (IDs 10-35)
+- Function F1-F12: 12 actions (IDs 36-47)
+- Arrow keys: 4 actions (IDs 48-51)
+- Control keys (esc/tab/backspace/enter/space/insert/delete): 7 actions (IDs 52-58)
+- Navigation (home/end/pageup/pagedown): 4 actions (IDs 59-62)
+- Modifiers (alt/ctrl/shift/caps/numlock): 8 actions (IDs 63-70)
+- Numpad: 16 actions (IDs 71-86)
+- Punctuation/symbols: 12 actions (IDs 87-98)
+
+**Mouse Actions (14 total):**
+- Move directions: 8 (up/down/left/right + diagonals)
+- Clicks: 4 (left/right/middle/double-click)
+- Wheel: 2 (up/down)
+
+**Special:**
+- NO_OP: 1 action (do nothing)
+
+**API for NN:**
+```cpp
+size_t GetNumActions();           // Returns 114
+size_t GetNumKeyboardActions();   // Returns 99
+size_t GetNumMouseActions();      // Returns 14
+const char* GetActionName(size_t action_id);
+void InjectAction(size_t action_id, float mouse_magnitude = 20.0f);
+void InjectRandomAction();        // Random from entire space
+```
 
 ## Key Architecture Decisions:
 - Explorer is a **separate module** that hooks into DOSBox

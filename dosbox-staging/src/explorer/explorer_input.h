@@ -94,7 +94,7 @@ void ResetInputStats();
 // Fuzz Input Generation (convenience helpers)
 // =============================================================================
 
-// Inject a random key press
+// Inject a random key press (from ALL available keys)
 void InjectRandomKey();
 
 // Inject random mouse movement
@@ -103,8 +103,38 @@ void InjectRandomMouseMove(float max_delta = 50.0f);
 // Inject a random mouse button click
 void InjectRandomMouseClick();
 
+// Inject a completely random action (key, mouse, or NO_OP)
+void InjectRandomAction();
+
 // Set random seed for reproducible fuzzing
 void SetInputRandomSeed(uint32_t seed);
+
+// =============================================================================
+// Neural Network Action Space API
+// =============================================================================
+
+// Get total number of discrete actions available
+// This is the action space size for an NN controller
+size_t GetNumActions();
+
+// Get number of keyboard-only actions
+size_t GetNumKeyboardActions();
+
+// Get number of mouse-only actions  
+size_t GetNumMouseActions();
+
+// Get human-readable name for an action ID
+const char* GetActionName(size_t action_id);
+
+// Inject a specific action by ID
+// action_id: 0 to GetNumActions()-1
+// mouse_magnitude: movement amount for mouse actions (default 20.0)
+void InjectAction(size_t action_id, float mouse_magnitude = 20.0f);
+
+// Action space layout:
+//   [0, NUM_KEYBOARD_ACTIONS-1] = Keyboard keys
+//   [NUM_KEYBOARD_ACTIONS, NUM_KEYBOARD_ACTIONS+NUM_MOUSE_ACTIONS-1] = Mouse actions
+//   [TOTAL_ACTIONS-1] = NO_OP (do nothing)
 
 } // namespace Explorer
 
@@ -136,7 +166,14 @@ inline void ResetInputStats() {}
 inline void InjectRandomKey() {}
 inline void InjectRandomMouseMove(float = 50.0f) {}
 inline void InjectRandomMouseClick() {}
+inline void InjectRandomAction() {}
 inline void SetInputRandomSeed(uint32_t) {}
+
+inline size_t GetNumActions() { return 0; }
+inline size_t GetNumKeyboardActions() { return 0; }
+inline size_t GetNumMouseActions() { return 0; }
+inline const char* GetActionName(size_t) { return nullptr; }
+inline void InjectAction(size_t, float = 20.0f) {}
 
 } // namespace Explorer
 
