@@ -299,10 +299,10 @@ void ResetInputStats()
 // Random Input Generation
 // =============================================================================
 // Complete Action Space for Neural Network Control
-// Full granularity: separate press/release for drag-drop and modifier combos
+// MAXIMUM GRANULARITY: Full key hold/release, fine mouse control, absolute positioning
 // =============================================================================
 
-// All available keyboard keys (complete DOS keyboard)
+// All available keyboard keys (complete DOS keyboard) - 93 keys
 static const KBD_KEYS ALL_KEYS[] = {
     // Numbers (0-9) -> indices 0-9
     KBD_0, KBD_1, KBD_2, KBD_3, KBD_4, KBD_5, KBD_6, KBD_7, KBD_8, KBD_9,
@@ -337,87 +337,122 @@ static const KBD_KEYS ALL_KEYS[] = {
     KBD_semicolon, KBD_quote, KBD_grave,
     KBD_period, KBD_comma, KBD_slash,
     KBD_capslock, KBD_scrolllock,
-};
-
-constexpr size_t NUM_REGULAR_KEYS = sizeof(ALL_KEYS) / sizeof(ALL_KEYS[0]);
-
-// Modifier keys (separate for hold/release tracking)
-static const KBD_KEYS MODIFIER_KEYS[] = {
+    
+    // Modifiers (also in ALL_KEYS for full control) -> indices 92-98
     KBD_leftshift, KBD_rightshift,
     KBD_leftctrl, KBD_rightctrl,
     KBD_leftalt, KBD_rightalt,
     KBD_numlock,
 };
-constexpr size_t NUM_MODIFIER_KEYS = sizeof(MODIFIER_KEYS) / sizeof(MODIFIER_KEYS[0]);
+
+constexpr size_t NUM_KEYS = sizeof(ALL_KEYS) / sizeof(ALL_KEYS[0]); // 99
 
 // =============================================================================
-// Action Space Layout:
+// Action Space Layout (Total: 430 actions)
 // 
-// Section 1: Regular key PRESS (down+up) - quick tap
-//   [0, NUM_REGULAR_KEYS-1] = 92 actions
+// KEYBOARD ACTIONS:
+//   Section 1: Key TAP (press+release)     [0, 98]       = 99 actions
+//   Section 2: Key DOWN (hold start)       [99, 197]     = 99 actions
+//   Section 3: Key UP (release)            [198, 296]    = 99 actions
 //
-// Section 2: Modifier key DOWN (hold)
-//   [92, 92+NUM_MODIFIER_KEYS-1] = 7 actions (shift L/R, ctrl L/R, alt L/R, numlock)
+// MOUSE MOVEMENT:
+//   Section 4: Relative move (8 dirs × 5 speeds) [297, 336] = 40 actions
+//   Section 5: Absolute position (15 regions)    [337, 351] = 15 actions
 //
-// Section 3: Modifier key UP (release)
-//   [99, 99+NUM_MODIFIER_KEYS-1] = 7 actions
+// MOUSE BUTTONS:
+//   Section 6: Button DOWN                  [352, 354]    = 3 actions
+//   Section 7: Button UP                    [355, 357]    = 3 actions
+//   Section 8: Button CLICK                 [358, 360]    = 3 actions
+//   Section 9: Button DOUBLE-CLICK          [361, 363]    = 3 actions
+//   Section 10: Button TRIPLE-CLICK         [364, 366]    = 3 actions
 //
-// Section 4: Mouse movement (8 directions × 3 speeds = 24)
-//   [106, 129] = 24 actions
+// MOUSE WHEEL:
+//   Section 11: Wheel (up/down × 3 amounts) [367, 372]    = 6 actions
 //
-// Section 5: Mouse button DOWN (for drag start)
-//   [130, 132] = 3 actions (left, right, middle)
+// MOUSE DRAG COMBOS (convenience):
+//   Section 12: Start drag (btn down + ready) [373, 375]  = 3 actions
+//   Section 13: End drag (btn up)             [376, 378]  = 3 actions
 //
-// Section 6: Mouse button UP (for drag end)
-//   [133, 135] = 3 actions
+// SPECIAL:
+//   Section 14: NO_OP                       [379]         = 1 action
+//   Section 15: RELEASE_ALL                 [380]         = 1 action
 //
-// Section 7: Mouse button CLICK (quick press+release)
-//   [136, 138] = 3 actions
-//
-// Section 8: Mouse button DOUBLE-CLICK
-//   [139, 141] = 3 actions
-//
-// Section 9: Mouse wheel
-//   [142, 143] = 2 actions (up, down)
-//
-// Section 10: NO_OP
-//   [144] = 1 action
-//
-// TOTAL: 145 actions
+// TOTAL: 381 actions
 // =============================================================================
 
-enum class ActionSection : int {
-    KeyPress = 0,
-    ModifierDown = NUM_REGULAR_KEYS,                              // 92
-    ModifierUp = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS,            // 99
-    MouseMove = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2,         // 106
-    MouseButtonDown = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 24,  // 130
-    MouseButtonUp = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 27,    // 133
-    MouseClick = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 30,       // 136
-    MouseDoubleClick = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 33, // 139
-    MouseWheel = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 36,       // 142
-    NoOp = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 38,             // 144
-    TotalActions = NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2 + 39      // 145
-};
+constexpr size_t SEC_KEY_TAP = 0;
+constexpr size_t SEC_KEY_DOWN = NUM_KEYS;                    // 99
+constexpr size_t SEC_KEY_UP = NUM_KEYS * 2;                  // 198
 
-constexpr size_t TOTAL_ACTIONS = static_cast<size_t>(ActionSection::TotalActions);
+constexpr size_t NUM_MOUSE_DIRS = 8;
+constexpr size_t NUM_MOUSE_SPEEDS = 5;
+constexpr size_t NUM_MOUSE_MOVES = NUM_MOUSE_DIRS * NUM_MOUSE_SPEEDS; // 40
 
-// Mouse movement speeds
-static const float MOUSE_SPEEDS[] = { 5.0f, 20.0f, 50.0f }; // slow, medium, fast
-constexpr size_t NUM_MOUSE_SPEEDS = 3;
+constexpr size_t SEC_MOUSE_MOVE = NUM_KEYS * 3;              // 297
+constexpr size_t NUM_MOUSE_POSITIONS = 15;
+constexpr size_t SEC_MOUSE_ABS = SEC_MOUSE_MOVE + NUM_MOUSE_MOVES; // 337
+
+constexpr size_t SEC_MOUSE_BTN_DOWN = SEC_MOUSE_ABS + NUM_MOUSE_POSITIONS; // 352
+constexpr size_t SEC_MOUSE_BTN_UP = SEC_MOUSE_BTN_DOWN + 3;   // 355
+constexpr size_t SEC_MOUSE_CLICK = SEC_MOUSE_BTN_UP + 3;      // 358
+constexpr size_t SEC_MOUSE_DBLCLICK = SEC_MOUSE_CLICK + 3;    // 361
+constexpr size_t SEC_MOUSE_TRICLICK = SEC_MOUSE_DBLCLICK + 3; // 364
+
+constexpr size_t SEC_WHEEL = SEC_MOUSE_TRICLICK + 3;          // 367
+constexpr size_t NUM_WHEEL_ACTIONS = 6;                        // up/down × small/med/large
+
+constexpr size_t SEC_DRAG_START = SEC_WHEEL + NUM_WHEEL_ACTIONS; // 373
+constexpr size_t SEC_DRAG_END = SEC_DRAG_START + 3;           // 376
+
+constexpr size_t SEC_NOOP = SEC_DRAG_END + 3;                 // 379
+constexpr size_t SEC_RELEASE_ALL = SEC_NOOP + 1;              // 380
+
+constexpr size_t TOTAL_ACTIONS = SEC_RELEASE_ALL + 1;         // 381
+
+// Mouse movement speeds (pixels)
+static const float MOUSE_SPEEDS[] = { 1.0f, 5.0f, 15.0f, 40.0f, 100.0f }; // micro, slow, medium, fast, jump
 
 // Mouse movement directions (dx, dy multipliers)
 static const float MOUSE_DIRECTIONS[][2] = {
-    { 0.0f, -1.0f },    // Up
-    { 0.0f, 1.0f },     // Down
-    { -1.0f, 0.0f },    // Left
-    { 1.0f, 0.0f },     // Right
+    { 0.0f, -1.0f },      // Up
+    { 0.0f, 1.0f },       // Down
+    { -1.0f, 0.0f },      // Left
+    { 1.0f, 0.0f },       // Right
     { -0.707f, -0.707f }, // Up-Left
     { 0.707f, -0.707f },  // Up-Right
     { -0.707f, 0.707f },  // Down-Left
     { 0.707f, 0.707f },   // Down-Right
 };
-constexpr size_t NUM_MOUSE_DIRECTIONS = 8;
+
+// Absolute mouse positions (normalized 0-1 coordinates)
+// 15 positions: 3x3 grid + 4 edge centers + 2 special (center-left, center-right for menus)
+static const float MOUSE_POSITIONS[][2] = {
+    // 3x3 grid corners and center
+    { 0.1f, 0.1f },   // Top-left
+    { 0.5f, 0.1f },   // Top-center
+    { 0.9f, 0.1f },   // Top-right
+    { 0.1f, 0.5f },   // Middle-left
+    { 0.5f, 0.5f },   // Center
+    { 0.9f, 0.5f },   // Middle-right
+    { 0.1f, 0.9f },   // Bottom-left
+    { 0.5f, 0.9f },   // Bottom-center
+    { 0.9f, 0.9f },   // Bottom-right
+    // Edge midpoints (for scrollbars, toolbars)
+    { 0.5f, 0.05f },  // Top edge
+    { 0.5f, 0.95f },  // Bottom edge
+    { 0.05f, 0.5f },  // Left edge
+    { 0.95f, 0.5f },  // Right edge
+    // Quarter positions (for dialog buttons)
+    { 0.25f, 0.75f }, // Lower-left quarter (Cancel button area)
+    { 0.75f, 0.75f }, // Lower-right quarter (OK button area)
+};
+
+// Wheel scroll amounts
+static const int16_t WHEEL_AMOUNTS[] = { 1, 3, 10 }; // single line, few lines, page
+
+// Track held keys for RELEASE_ALL
+static bool s_held_keys[NUM_KEYS] = {false};
+static bool s_held_mouse_buttons[3] = {false};
 
 // =============================================================================
 
@@ -433,12 +468,19 @@ size_t GetNumActions()
 
 size_t GetNumKeyboardActions()
 {
-    return NUM_REGULAR_KEYS + NUM_MODIFIER_KEYS * 2; // press + modifier down + modifier up
+    return NUM_KEYS * 3; // tap + down + up
 }
 
 size_t GetNumMouseActions()
 {
-    return 24 + 3 + 3 + 3 + 3 + 2; // move + button down + button up + click + dblclick + wheel
+    return TOTAL_ACTIONS - NUM_KEYS * 3 - 2; // everything except keyboard and special
+}
+
+static const char* GetKeyNameSafe(size_t key_idx)
+{
+    if (key_idx >= NUM_KEYS) return "UNKNOWN";
+    const char* name = KeyCodeToName(ALL_KEYS[key_idx]);
+    return name ? name : "UNKNOWN";
 }
 
 const char* GetActionName(size_t action_id)
@@ -449,87 +491,105 @@ const char* GetActionName(size_t action_id)
         return "INVALID";
     }
     
-    // NO_OP
-    if (action_id == static_cast<size_t>(ActionSection::NoOp)) {
-        return "NO_OP";
+    // Key TAP
+    if (action_id < SEC_KEY_DOWN) {
+        snprintf(buffer, sizeof(buffer), "TAP_%s", GetKeyNameSafe(action_id));
+        return buffer;
     }
     
-    // Regular key press
-    if (action_id < NUM_REGULAR_KEYS) {
-        const char* name = KeyCodeToName(ALL_KEYS[action_id]);
-        return name ? name : "UNKNOWN_KEY";
+    // Key DOWN
+    if (action_id < SEC_KEY_UP) {
+        snprintf(buffer, sizeof(buffer), "DOWN_%s", GetKeyNameSafe(action_id - SEC_KEY_DOWN));
+        return buffer;
     }
     
-    // Modifier DOWN
-    size_t section_start = static_cast<size_t>(ActionSection::ModifierDown);
-    if (action_id >= section_start && action_id < section_start + NUM_MODIFIER_KEYS) {
-        size_t mod_idx = action_id - section_start;
-        static const char* mod_names[] = {
-            "LSHIFT_DOWN", "RSHIFT_DOWN", "LCTRL_DOWN", "RCTRL_DOWN",
-            "LALT_DOWN", "RALT_DOWN", "NUMLOCK_DOWN"
-        };
-        return mod_names[mod_idx];
+    // Key UP
+    if (action_id < SEC_MOUSE_MOVE) {
+        snprintf(buffer, sizeof(buffer), "UP_%s", GetKeyNameSafe(action_id - SEC_KEY_UP));
+        return buffer;
     }
     
-    // Modifier UP
-    section_start = static_cast<size_t>(ActionSection::ModifierUp);
-    if (action_id >= section_start && action_id < section_start + NUM_MODIFIER_KEYS) {
-        size_t mod_idx = action_id - section_start;
-        static const char* mod_names[] = {
-            "LSHIFT_UP", "RSHIFT_UP", "LCTRL_UP", "RCTRL_UP",
-            "LALT_UP", "RALT_UP", "NUMLOCK_UP"
-        };
-        return mod_names[mod_idx];
-    }
-    
-    // Mouse movement
-    section_start = static_cast<size_t>(ActionSection::MouseMove);
-    if (action_id >= section_start && action_id < section_start + 24) {
-        size_t move_idx = action_id - section_start;
+    // Mouse relative move
+    if (action_id < SEC_MOUSE_ABS) {
+        size_t move_idx = action_id - SEC_MOUSE_MOVE;
         size_t dir = move_idx / NUM_MOUSE_SPEEDS;
         size_t speed = move_idx % NUM_MOUSE_SPEEDS;
         static const char* dir_names[] = {
-            "UP", "DOWN", "LEFT", "RIGHT", "UP_LEFT", "UP_RIGHT", "DOWN_LEFT", "DOWN_RIGHT"
+            "UP", "DOWN", "LEFT", "RIGHT", "UPLEFT", "UPRIGHT", "DOWNLEFT", "DOWNRIGHT"
         };
-        static const char* speed_names[] = { "SLOW", "MED", "FAST" };
+        static const char* speed_names[] = { "MICRO", "SLOW", "MED", "FAST", "JUMP" };
         snprintf(buffer, sizeof(buffer), "MOUSE_%s_%s", dir_names[dir], speed_names[speed]);
         return buffer;
     }
     
+    // Mouse absolute position
+    if (action_id < SEC_MOUSE_BTN_DOWN) {
+        size_t pos_idx = action_id - SEC_MOUSE_ABS;
+        static const char* pos_names[] = {
+            "POS_TOPLEFT", "POS_TOPCENTER", "POS_TOPRIGHT",
+            "POS_MIDLEFT", "POS_CENTER", "POS_MIDRIGHT",
+            "POS_BOTLEFT", "POS_BOTCENTER", "POS_BOTRIGHT",
+            "POS_TOPEDGE", "POS_BOTEDGE", "POS_LEFTEDGE", "POS_RIGHTEDGE",
+            "POS_CANCEL", "POS_OK"
+        };
+        return pos_names[pos_idx];
+    }
+    
     // Mouse button DOWN
-    section_start = static_cast<size_t>(ActionSection::MouseButtonDown);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        static const char* names[] = { "MOUSE_LEFT_DOWN", "MOUSE_RIGHT_DOWN", "MOUSE_MIDDLE_DOWN" };
-        return names[action_id - section_start];
+    if (action_id < SEC_MOUSE_BTN_UP) {
+        static const char* names[] = { "MOUSE_L_DOWN", "MOUSE_R_DOWN", "MOUSE_M_DOWN" };
+        return names[action_id - SEC_MOUSE_BTN_DOWN];
     }
     
     // Mouse button UP
-    section_start = static_cast<size_t>(ActionSection::MouseButtonUp);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        static const char* names[] = { "MOUSE_LEFT_UP", "MOUSE_RIGHT_UP", "MOUSE_MIDDLE_UP" };
-        return names[action_id - section_start];
+    if (action_id < SEC_MOUSE_CLICK) {
+        static const char* names[] = { "MOUSE_L_UP", "MOUSE_R_UP", "MOUSE_M_UP" };
+        return names[action_id - SEC_MOUSE_BTN_UP];
     }
     
     // Mouse CLICK
-    section_start = static_cast<size_t>(ActionSection::MouseClick);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        static const char* names[] = { "MOUSE_LEFT_CLICK", "MOUSE_RIGHT_CLICK", "MOUSE_MIDDLE_CLICK" };
-        return names[action_id - section_start];
+    if (action_id < SEC_MOUSE_DBLCLICK) {
+        static const char* names[] = { "CLICK_L", "CLICK_R", "CLICK_M" };
+        return names[action_id - SEC_MOUSE_CLICK];
     }
     
     // Mouse DOUBLE-CLICK
-    section_start = static_cast<size_t>(ActionSection::MouseDoubleClick);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        static const char* names[] = { "MOUSE_LEFT_DBLCLICK", "MOUSE_RIGHT_DBLCLICK", "MOUSE_MIDDLE_DBLCLICK" };
-        return names[action_id - section_start];
+    if (action_id < SEC_MOUSE_TRICLICK) {
+        static const char* names[] = { "DBLCLICK_L", "DBLCLICK_R", "DBLCLICK_M" };
+        return names[action_id - SEC_MOUSE_DBLCLICK];
+    }
+    
+    // Mouse TRIPLE-CLICK
+    if (action_id < SEC_WHEEL) {
+        static const char* names[] = { "TRICLICK_L", "TRICLICK_R", "TRICLICK_M" };
+        return names[action_id - SEC_MOUSE_TRICLICK];
     }
     
     // Mouse wheel
-    section_start = static_cast<size_t>(ActionSection::MouseWheel);
-    if (action_id >= section_start && action_id < section_start + 2) {
-        static const char* names[] = { "WHEEL_UP", "WHEEL_DOWN" };
-        return names[action_id - section_start];
+    if (action_id < SEC_DRAG_START) {
+        size_t wheel_idx = action_id - SEC_WHEEL;
+        static const char* names[] = {
+            "WHEEL_UP_SMALL", "WHEEL_UP_MED", "WHEEL_UP_LARGE",
+            "WHEEL_DOWN_SMALL", "WHEEL_DOWN_MED", "WHEEL_DOWN_LARGE"
+        };
+        return names[wheel_idx];
     }
+    
+    // Drag start
+    if (action_id < SEC_DRAG_END) {
+        static const char* names[] = { "DRAG_START_L", "DRAG_START_R", "DRAG_START_M" };
+        return names[action_id - SEC_DRAG_START];
+    }
+    
+    // Drag end
+    if (action_id < SEC_NOOP) {
+        static const char* names[] = { "DRAG_END_L", "DRAG_END_R", "DRAG_END_M" };
+        return names[action_id - SEC_DRAG_END];
+    }
+    
+    // Special actions
+    if (action_id == SEC_NOOP) return "NO_OP";
+    if (action_id == SEC_RELEASE_ALL) return "RELEASE_ALL";
     
     return "UNKNOWN";
 }
@@ -540,35 +600,31 @@ void InjectAction(size_t action_id, float)
         return;
     }
     
-    // NO_OP
-    if (action_id == static_cast<size_t>(ActionSection::NoOp)) {
-        return;
-    }
-    
-    // Regular key press (down + up)
-    if (action_id < NUM_REGULAR_KEYS) {
+    // Key TAP (press + release)
+    if (action_id < SEC_KEY_DOWN) {
         InjectKeyPress(ALL_KEYS[action_id]);
         return;
     }
     
-    // Modifier DOWN
-    size_t section_start = static_cast<size_t>(ActionSection::ModifierDown);
-    if (action_id >= section_start && action_id < section_start + NUM_MODIFIER_KEYS) {
-        InjectKey(MODIFIER_KEYS[action_id - section_start], true);
+    // Key DOWN (hold start)
+    if (action_id < SEC_KEY_UP) {
+        size_t key_idx = action_id - SEC_KEY_DOWN;
+        InjectKey(ALL_KEYS[key_idx], true);
+        s_held_keys[key_idx] = true;
         return;
     }
     
-    // Modifier UP
-    section_start = static_cast<size_t>(ActionSection::ModifierUp);
-    if (action_id >= section_start && action_id < section_start + NUM_MODIFIER_KEYS) {
-        InjectKey(MODIFIER_KEYS[action_id - section_start], false);
+    // Key UP (release)
+    if (action_id < SEC_MOUSE_MOVE) {
+        size_t key_idx = action_id - SEC_KEY_UP;
+        InjectKey(ALL_KEYS[key_idx], false);
+        s_held_keys[key_idx] = false;
         return;
     }
     
-    // Mouse movement (8 directions × 3 speeds)
-    section_start = static_cast<size_t>(ActionSection::MouseMove);
-    if (action_id >= section_start && action_id < section_start + 24) {
-        size_t move_idx = action_id - section_start;
+    // Mouse relative movement (8 directions × 5 speeds)
+    if (action_id < SEC_MOUSE_ABS) {
+        size_t move_idx = action_id - SEC_MOUSE_MOVE;
         size_t dir = move_idx / NUM_MOUSE_SPEEDS;
         size_t speed_idx = move_idx % NUM_MOUSE_SPEEDS;
         float speed = MOUSE_SPEEDS[speed_idx];
@@ -576,33 +632,40 @@ void InjectAction(size_t action_id, float)
         return;
     }
     
-    // Mouse button DOWN (for drag start)
-    section_start = static_cast<size_t>(ActionSection::MouseButtonDown);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        InjectMouseButton(static_cast<uint8_t>(action_id - section_start), true);
+    // Mouse absolute position
+    if (action_id < SEC_MOUSE_BTN_DOWN) {
+        size_t pos_idx = action_id - SEC_MOUSE_ABS;
+        InjectMouseMoveTo(MOUSE_POSITIONS[pos_idx][0], MOUSE_POSITIONS[pos_idx][1]);
         return;
     }
     
-    // Mouse button UP (for drag end)
-    section_start = static_cast<size_t>(ActionSection::MouseButtonUp);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        InjectMouseButton(static_cast<uint8_t>(action_id - section_start), false);
+    // Mouse button DOWN
+    if (action_id < SEC_MOUSE_BTN_UP) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_MOUSE_BTN_DOWN);
+        InjectMouseButton(btn, true);
+        s_held_mouse_buttons[btn] = true;
+        return;
+    }
+    
+    // Mouse button UP
+    if (action_id < SEC_MOUSE_CLICK) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_MOUSE_BTN_UP);
+        InjectMouseButton(btn, false);
+        s_held_mouse_buttons[btn] = false;
         return;
     }
     
     // Mouse CLICK (down + up)
-    section_start = static_cast<size_t>(ActionSection::MouseClick);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        uint8_t btn = static_cast<uint8_t>(action_id - section_start);
+    if (action_id < SEC_MOUSE_DBLCLICK) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_MOUSE_CLICK);
         InjectMouseButton(btn, true);
         InjectMouseButton(btn, false);
         return;
     }
     
     // Mouse DOUBLE-CLICK
-    section_start = static_cast<size_t>(ActionSection::MouseDoubleClick);
-    if (action_id >= section_start && action_id < section_start + 3) {
-        uint8_t btn = static_cast<uint8_t>(action_id - section_start);
+    if (action_id < SEC_MOUSE_TRICLICK) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_MOUSE_DBLCLICK);
         InjectMouseButton(btn, true);
         InjectMouseButton(btn, false);
         InjectMouseButton(btn, true);
@@ -610,25 +673,74 @@ void InjectAction(size_t action_id, float)
         return;
     }
     
-    // Mouse wheel
-    section_start = static_cast<size_t>(ActionSection::MouseWheel);
-    if (action_id >= section_start && action_id < section_start + 2) {
-        InjectMouseWheel(action_id == section_start ? 3 : -3);
+    // Mouse TRIPLE-CLICK
+    if (action_id < SEC_WHEEL) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_MOUSE_TRICLICK);
+        for (int i = 0; i < 3; i++) {
+            InjectMouseButton(btn, true);
+            InjectMouseButton(btn, false);
+        }
+        return;
+    }
+    
+    // Mouse wheel (up/down × 3 amounts)
+    if (action_id < SEC_DRAG_START) {
+        size_t wheel_idx = action_id - SEC_WHEEL;
+        bool is_up = wheel_idx < 3;
+        size_t amount_idx = wheel_idx % 3;
+        int16_t amount = WHEEL_AMOUNTS[amount_idx];
+        InjectMouseWheel(is_up ? amount : -amount);
+        return;
+    }
+    
+    // Drag start (button down, ready for move)
+    if (action_id < SEC_DRAG_END) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_DRAG_START);
+        InjectMouseButton(btn, true);
+        s_held_mouse_buttons[btn] = true;
+        return;
+    }
+    
+    // Drag end (button up)
+    if (action_id < SEC_NOOP) {
+        uint8_t btn = static_cast<uint8_t>(action_id - SEC_DRAG_END);
+        InjectMouseButton(btn, false);
+        s_held_mouse_buttons[btn] = false;
+        return;
+    }
+    
+    // NO_OP
+    if (action_id == SEC_NOOP) {
+        return;
+    }
+    
+    // RELEASE_ALL - release all held keys and mouse buttons
+    if (action_id == SEC_RELEASE_ALL) {
+        for (size_t i = 0; i < NUM_KEYS; i++) {
+            if (s_held_keys[i]) {
+                InjectKey(ALL_KEYS[i], false);
+                s_held_keys[i] = false;
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            if (s_held_mouse_buttons[i]) {
+                InjectMouseButton(static_cast<uint8_t>(i), false);
+                s_held_mouse_buttons[i] = false;
+            }
+        }
         return;
     }
 }
 
 void InjectRandomKey()
 {
-    // Use ALL regular keys
-    std::uniform_int_distribution<size_t> dist(0, NUM_REGULAR_KEYS - 1);
+    std::uniform_int_distribution<size_t> dist(0, NUM_KEYS - 1);
     KBD_KEYS key = ALL_KEYS[dist(s_rng)];
     InjectKeyPress(key);
 }
 
 void InjectRandomAction()
 {
-    // Random action from entire action space (including NO_OP)
     std::uniform_int_distribution<size_t> dist(0, TOTAL_ACTIONS - 1);
     InjectAction(dist(s_rng));
 }
@@ -651,28 +763,40 @@ void InjectRandomMouseClick()
 // Get action space info for NN training
 ActionSpaceInfo GetActionSpaceInfo()
 {
-    ActionSpaceInfo info;
+    ActionSpaceInfo info = {};
     info.total_actions = TOTAL_ACTIONS;
-    info.num_key_press = NUM_REGULAR_KEYS;
-    info.num_modifier_down = NUM_MODIFIER_KEYS;
-    info.num_modifier_up = NUM_MODIFIER_KEYS;
-    info.num_mouse_move = 24;  // 8 dirs × 3 speeds
-    info.num_mouse_button_down = 3;
-    info.num_mouse_button_up = 3;
-    info.num_mouse_click = 3;
-    info.num_mouse_dblclick = 3;
-    info.num_mouse_wheel = 2;
     
-    info.key_press_start = 0;
-    info.modifier_down_start = static_cast<size_t>(ActionSection::ModifierDown);
-    info.modifier_up_start = static_cast<size_t>(ActionSection::ModifierUp);
-    info.mouse_move_start = static_cast<size_t>(ActionSection::MouseMove);
-    info.mouse_button_down_start = static_cast<size_t>(ActionSection::MouseButtonDown);
-    info.mouse_button_up_start = static_cast<size_t>(ActionSection::MouseButtonUp);
-    info.mouse_click_start = static_cast<size_t>(ActionSection::MouseClick);
-    info.mouse_dblclick_start = static_cast<size_t>(ActionSection::MouseDoubleClick);
-    info.mouse_wheel_start = static_cast<size_t>(ActionSection::MouseWheel);
-    info.noop_action = static_cast<size_t>(ActionSection::NoOp);
+    // Keyboard
+    info.num_keys = NUM_KEYS;
+    info.key_tap_start = SEC_KEY_TAP;
+    info.key_down_start = SEC_KEY_DOWN;
+    info.key_up_start = SEC_KEY_UP;
+    
+    // Mouse movement
+    info.num_mouse_dirs = NUM_MOUSE_DIRS;
+    info.num_mouse_speeds = NUM_MOUSE_SPEEDS;
+    info.mouse_move_start = SEC_MOUSE_MOVE;
+    info.num_mouse_positions = NUM_MOUSE_POSITIONS;
+    info.mouse_abs_start = SEC_MOUSE_ABS;
+    
+    // Mouse buttons
+    info.mouse_btn_down_start = SEC_MOUSE_BTN_DOWN;
+    info.mouse_btn_up_start = SEC_MOUSE_BTN_UP;
+    info.mouse_click_start = SEC_MOUSE_CLICK;
+    info.mouse_dblclick_start = SEC_MOUSE_DBLCLICK;
+    info.mouse_triclick_start = SEC_MOUSE_TRICLICK;
+    
+    // Mouse wheel
+    info.num_wheel_amounts = 3;
+    info.wheel_start = SEC_WHEEL;
+    
+    // Drag
+    info.drag_start_start = SEC_DRAG_START;
+    info.drag_end_start = SEC_DRAG_END;
+    
+    // Special
+    info.noop_action = SEC_NOOP;
+    info.release_all_action = SEC_RELEASE_ALL;
     
     return info;
 }

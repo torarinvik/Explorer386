@@ -110,35 +110,45 @@ void InjectRandomAction();
 void SetInputRandomSeed(uint32_t seed);
 
 // =============================================================================
-// Neural Network Action Space API (145 discrete actions)
+// Neural Network Action Space API (381 discrete actions)
+// MAXIMUM GRANULARITY for full game control
 // =============================================================================
 
 // Action space info for NN training
 struct ActionSpaceInfo {
-    size_t total_actions;          // 145
+    size_t total_actions;          // 381
     
-    // Action counts per category
-    size_t num_key_press;          // 92 (regular keys: tap down+up)
-    size_t num_modifier_down;      // 7 (shift/ctrl/alt L/R + numlock)
-    size_t num_modifier_up;        // 7
-    size_t num_mouse_move;         // 24 (8 directions × 3 speeds)
-    size_t num_mouse_button_down;  // 3 (left/right/middle)
-    size_t num_mouse_button_up;    // 3
-    size_t num_mouse_click;        // 3 (down+up)
-    size_t num_mouse_dblclick;     // 3
-    size_t num_mouse_wheel;        // 2 (up/down)
+    // Keyboard (99 keys × 3 modes = 297 keyboard actions)
+    size_t num_keys;               // 99 (all keys including modifiers)
+    size_t key_tap_start;          // 0   - quick press+release
+    size_t key_down_start;         // 99  - hold key down
+    size_t key_up_start;           // 198 - release key
     
-    // Starting indices for each category
-    size_t key_press_start;        // 0
-    size_t modifier_down_start;    // 92
-    size_t modifier_up_start;      // 99
-    size_t mouse_move_start;       // 106
-    size_t mouse_button_down_start;// 130
-    size_t mouse_button_up_start;  // 133
-    size_t mouse_click_start;      // 136
-    size_t mouse_dblclick_start;   // 139
-    size_t mouse_wheel_start;      // 142
-    size_t noop_action;            // 144
+    // Mouse movement
+    size_t num_mouse_dirs;         // 8 directions
+    size_t num_mouse_speeds;       // 5 speeds (micro/slow/med/fast/jump)
+    size_t mouse_move_start;       // 297 (40 actions: 8×5)
+    size_t num_mouse_positions;    // 15 screen regions
+    size_t mouse_abs_start;        // 337 (15 actions)
+    
+    // Mouse buttons (3 buttons × various modes)
+    size_t mouse_btn_down_start;   // 352 (3 actions)
+    size_t mouse_btn_up_start;     // 355 (3 actions)
+    size_t mouse_click_start;      // 358 (3 actions)
+    size_t mouse_dblclick_start;   // 361 (3 actions)
+    size_t mouse_triclick_start;   // 364 (3 actions)
+    
+    // Mouse wheel
+    size_t num_wheel_amounts;      // 3 (small/med/large)
+    size_t wheel_start;            // 367 (6 actions: up/down × 3)
+    
+    // Drag operations
+    size_t drag_start_start;       // 373 (3 actions)
+    size_t drag_end_start;         // 376 (3 actions)
+    
+    // Special actions
+    size_t noop_action;            // 379
+    size_t release_all_action;     // 380 - release all held keys/buttons
 };
 
 // Get total number of discrete actions available
@@ -153,30 +163,50 @@ size_t GetNumMouseActions();
 // Get human-readable name for an action ID
 const char* GetActionName(size_t action_id);
 
-// Inject a specific action by ID
-// action_id: 0 to GetNumActions()-1
-void InjectAction(size_t action_id, float mouse_magnitude = 20.0f);
+// Inject a specific action by ID (0 to 380)
+void InjectAction(size_t action_id, float unused = 0.0f);
 
 // Get detailed action space info for NN training
 ActionSpaceInfo GetActionSpaceInfo();
 
 // =============================================================================
-// Action Space Layout (145 actions):
+// Action Space Layout (381 actions total):
 //
-// [0-91]    Key press (tap): 0-9, a-z, F1-F12, arrows, esc/tab/enter/space, etc.
-// [92-98]   Modifier DOWN:   LSHIFT, RSHIFT, LCTRL, RCTRL, LALT, RALT, NUMLOCK
-// [99-105]  Modifier UP:     same as above (release)
-// [106-129] Mouse move:      8 directions × 3 speeds (slow/med/fast)
-// [130-132] Mouse btn DOWN:  left, right, middle (for drag start)
-// [133-135] Mouse btn UP:    left, right, middle (for drag end)
-// [136-138] Mouse CLICK:     left, right, middle (down+up combo)
-// [139-141] Mouse DBLCLICK:  left, right, middle
-// [142-143] Mouse wheel:     up, down
-// [144]     NO_OP:           do nothing
+// KEYBOARD (297 actions):
+//   [0-98]     Key TAP:   Quick press+release for any key
+//   [99-197]   Key DOWN:  Start holding a key (for games needing held keys)
+//   [198-296]  Key UP:    Release a held key
 //
-// Drag-drop example: MOUSE_LEFT_DOWN → MOUSE_RIGHT_FAST → MOUSE_LEFT_UP
-// Shift-select:      LSHIFT_DOWN → Arrow keys → LSHIFT_UP
-// Ctrl+C:            LCTRL_DOWN → key 'c' → LCTRL_UP
+// MOUSE MOVEMENT (55 actions):
+//   [297-336]  Relative:  8 directions × 5 speeds (micro/slow/med/fast/jump)
+//   [337-351]  Absolute:  15 screen positions (corners, edges, dialog buttons)
+//
+// MOUSE BUTTONS (21 actions):
+//   [352-354]  Button DOWN:    left/right/middle (drag start)
+//   [355-357]  Button UP:      left/right/middle (drag end)
+//   [358-360]  CLICK:          left/right/middle (quick down+up)
+//   [361-363]  DOUBLE-CLICK:   left/right/middle
+//   [364-366]  TRIPLE-CLICK:   left/right/middle (select line/paragraph)
+//
+// MOUSE WHEEL (6 actions):
+//   [367-369]  Wheel UP:   small/medium/large scroll
+//   [370-372]  Wheel DOWN: small/medium/large scroll
+//
+// DRAG CONVENIENCE (6 actions):
+//   [373-375]  DRAG_START: left/right/middle (same as btn down, semantic)
+//   [376-378]  DRAG_END:   left/right/middle (same as btn up, semantic)
+//
+// SPECIAL (2 actions):
+//   [379]      NO_OP:       Do nothing
+//   [380]      RELEASE_ALL: Release all held keys and mouse buttons
+//
+// Example sequences for NN to learn:
+//   - Hold arrow for movement: DOWN_left → (wait) → UP_left
+//   - Ctrl+C: DOWN_leftctrl → TAP_c → UP_leftctrl
+//   - Drag file: POS_TOPLEFT → DRAG_START_L → MOUSE_RIGHT_FAST → DRAG_END_L
+//   - Menu click: POS_TOPCENTER → CLICK_L
+//   - Scroll document: WHEEL_DOWN_LARGE (multiple times)
+//   - Reset state: RELEASE_ALL
 // =============================================================================
 
 } // namespace Explorer
@@ -213,19 +243,21 @@ inline void InjectRandomAction() {}
 inline void SetInputRandomSeed(uint32_t) {}
 
 struct ActionSpaceInfo {
-    size_t total_actions; size_t num_key_press; size_t num_modifier_down;
-    size_t num_modifier_up; size_t num_mouse_move; size_t num_mouse_button_down;
-    size_t num_mouse_button_up; size_t num_mouse_click; size_t num_mouse_dblclick;
-    size_t num_mouse_wheel; size_t key_press_start; size_t modifier_down_start;
-    size_t modifier_up_start; size_t mouse_move_start; size_t mouse_button_down_start;
-    size_t mouse_button_up_start; size_t mouse_click_start; size_t mouse_dblclick_start;
-    size_t mouse_wheel_start; size_t noop_action;
+    size_t total_actions;
+    size_t num_keys; size_t key_tap_start; size_t key_down_start; size_t key_up_start;
+    size_t num_mouse_dirs; size_t num_mouse_speeds; size_t mouse_move_start;
+    size_t num_mouse_positions; size_t mouse_abs_start;
+    size_t mouse_btn_down_start; size_t mouse_btn_up_start;
+    size_t mouse_click_start; size_t mouse_dblclick_start; size_t mouse_triclick_start;
+    size_t num_wheel_amounts; size_t wheel_start;
+    size_t drag_start_start; size_t drag_end_start;
+    size_t noop_action; size_t release_all_action;
 };
 inline size_t GetNumActions() { return 0; }
 inline size_t GetNumKeyboardActions() { return 0; }
 inline size_t GetNumMouseActions() { return 0; }
 inline const char* GetActionName(size_t) { return nullptr; }
-inline void InjectAction(size_t, float = 20.0f) {}
+inline void InjectAction(size_t, float = 0.0f) {}
 inline ActionSpaceInfo GetActionSpaceInfo() { return {}; }
 
 } // namespace Explorer
