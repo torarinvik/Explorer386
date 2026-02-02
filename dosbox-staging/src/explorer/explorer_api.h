@@ -45,10 +45,19 @@ struct ExplorerConfig {
     uint32_t pc_repeat_threshold = 50;
     uint32_t loop_threshold = 100;
     
-    // RL policy (if LibTorch available)
+    // RL policy (if LibTorch available) - inference only
     bool enable_policy = false;
     std::string policy_model_path;
     float exploration_rate = 0.1f;
+    
+    // RL training (if LibTorch available)
+    bool enable_training = false;
+    std::string training_model_path = "explorer_policy.pt";
+    float training_lr = 3e-4f;
+    float training_gamma = 0.99f;
+    size_t training_batch_size = 64;
+    size_t training_steps_per_update = 2048;
+    bool training_use_gpu = true;
 };
 
 bool InitializeWithConfig(const ExplorerConfig& config);

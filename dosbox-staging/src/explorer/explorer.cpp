@@ -6,6 +6,8 @@
 #include "explorer_input.h"
 #include "explorer_log.h"
 #include "explorer_state.h"
+#include "explorer_training.h"
+#include "explorer_data.h"
 
 #include <cstring>
 #include <algorithm>
@@ -360,8 +362,19 @@ void Instrumenter::NotePortOut(uint16_t port, uint16_t value, uint32_t pc_phys) 
 void Instrumenter::Tick() {
     timer_ticks_++;
     
-    // Fuzz input injection
-    if (config_.fuzz_enabled) {
+    // Check if we're in training mode
+    if (IsTraining()) {
+        // Get coverage/data gains since last tick
+        uint32_t coverage_gain = run_new_coverage_;
+        uint32_t data_gain = GetDataCollector().GetRunNewBits();
+        bool stalled = is_stalled_;
+        bool program_exit = (stop_reason_ == StopReason::ProgramExit);
+        
+        // Call training tick
+        TrainingTick(coverage_gain, data_gain, stalled, program_exit);
+    }
+    // Fuzz input injection (when not training)
+    else if (config_.fuzz_enabled) {
         // Keyboard fuzzing
         if (config_.fuzz_keyboard_enabled && 
             config_.fuzz_key_interval > 0 &&

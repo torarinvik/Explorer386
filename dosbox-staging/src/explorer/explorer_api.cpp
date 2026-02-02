@@ -5,17 +5,54 @@
 
 #ifdef EXPLORER_ENABLED
 
+#include "misc/logging.h"
 #include "explorer.h"
 #include "explorer_data.h"
 #include "explorer_nn.h"
+#include "explorer_training.h"
 #include "explorer_log.h"
 #include "explorer_trace.h"
 #include "explorer_state.h"
+#include "hardware/timer.h"  // For TIMER_AddTickHandler
 #include <sstream>
 #include <fstream>
 #include <iomanip>
 
 namespace Explorer {
+
+// Tick handler called by PIC timer (~1000 Hz)
+static uint64_t s_tick_count = 0;
+static void ExplorerTickHandler() {
+    s_tick_count++;
+    
+    // Log occasionally to confirm tick handler is being called
+    if (s_tick_count % 5000 == 0) {
+        LOG_MSG("EXPLORER: Tick handler called %llu times", s_tick_count);
+    }
+    
+    // Call training tick directly even if instrumentation is disabled
+    // as training initialization sets its own state
+    if (IsTraining()) {
+        // Get coverage/data gains - use 0 if instrumenter not enabled
+        uint32_t coverage_gain = 0;
+        uint32_t data_gain = 0;
+        bool stalled = false;
+        bool program_exit = false;
+        
+        if (InstrumentationEnabled()) {
+            coverage_gain = GetInstrumenter().GetRunCoverageGain();
+            data_gain = GetDataCollector().GetRunNewBits();
+            stalled = GetInstrumenter().GetStopReason() == StopReason::Stall;
+            program_exit = GetInstrumenter().GetStopReason() == StopReason::ProgramExit;
+        }
+        
+        TrainingTick(coverage_gain, data_gain, stalled, program_exit);
+    }
+    // Also call the regular instrumenter tick if enabled
+    else if (InstrumentationEnabled()) {
+        GetInstrumenter().Tick();
+    }
+}
 
 // =============================================================================
 // Static state
@@ -85,6 +122,19 @@ bool InitializeWithConfig(const ExplorerConfig& config) {
             // Policy init failure is non-fatal, continue without it
         }
     }
+    
+    // Initialize training if requested
+    if (config.enable_training) {
+        TrainingConfig training_config;
+        training_config.learning_rate = config.training_lr;
+        training_config.gamma = config.training_gamma;
+        training_config.batch_size = config.training_batch_size;
+        training_config.steps_per_update = config.training_steps_per_update;
+        training_config.use_gpu = config.training_use_gpu;
+        training_config.model_path = config.training_model_path;
+        
+        StartTraining(training_config);
+    }
 #endif
     
     // Initialize trace recording
@@ -95,11 +145,22 @@ bool InitializeWithConfig(const ExplorerConfig& config) {
     
     g_initialized = true;
 
+    // Register tick handler for periodic updates (~1000 Hz)
+    TIMER_AddTickHandler(ExplorerTickHandler);
+    
     // Optional logging (controlled via env vars)
     Log_InitFromEnv();
     
     // State save/restore settings (controlled via env vars)
     State_InitFromEnv();
+    
+#ifdef EXPLORER_ENABLE_LIBTORCH
+    // Training (controlled via env vars: EXPLORER_TRAINING=1)
+    LOG_MSG("EXPLORER: LibTorch support enabled, checking for EXPLORER_TRAINING env var");
+    Training_InitFromEnv();
+#else
+    LOG_MSG("EXPLORER: LibTorch support NOT enabled at compile time");
+#endif
     
     return true;
 }
@@ -113,6 +174,7 @@ void Shutdown() {
     GetDataCollector().Shutdown();
     
 #ifdef EXPLORER_ENABLE_LIBTORCH
+    StopTraining();
     GetPolicyNetwork().Shutdown();
 #endif
     

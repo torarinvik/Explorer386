@@ -113,6 +113,11 @@ public:
     size_t Size() const { return experiences_.size(); }
     bool IsFull() const { return experiences_.size() >= max_size_; }
     
+    // Get last observation for GAE computation
+    const std::vector<float>& GetLastObservation() const { 
+        return experiences_.back().observation; 
+    }
+    
     // Get batch for training
     struct Batch {
         std::vector<std::vector<float>> observations;
@@ -282,6 +287,16 @@ void TrainingTick(uint32_t coverage_gain, uint32_t data_gain, bool stalled, bool
 void StartTraining(const TrainingConfig& config);
 void StopTraining();
 bool IsTraining();
+
+// Initialize training from environment variables
+// EXPLORER_TRAINING=1          Enable training
+// EXPLORER_TRAINING_LR=0.0003  Learning rate
+// EXPLORER_TRAINING_GAMMA=0.99 Discount factor
+// EXPLORER_TRAINING_GPU=1      Use GPU (MPS/CUDA)
+// EXPLORER_TRAINING_BATCH=64   Batch size
+// EXPLORER_TRAINING_STEPS=2048 Steps per update
+// EXPLORER_TRAINING_MODEL=path Model save path
+void Training_InitFromEnv();
 
 } // namespace Explorer
 

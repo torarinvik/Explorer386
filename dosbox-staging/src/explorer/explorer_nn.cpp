@@ -112,9 +112,21 @@ bool PolicyNetwork::Init(const PolicyConfig& config) {
     }
     
 #ifdef EXPLORER_ENABLE_LIBTORCH
-    // Set up device
-    if (config_.use_gpu && torch::cuda::is_available()) {
-        device_ = torch::kCUDA;
+    // Set up device - prefer MPS on macOS, CUDA elsewhere
+    if (config_.use_gpu) {
+#ifdef __APPLE__
+        if (torch::hasMPS()) {
+            device_ = torch::kMPS;
+        } else {
+            device_ = torch::kCPU;
+        }
+#else
+        if (torch::cuda::is_available()) {
+            device_ = torch::kCUDA;
+        } else {
+            device_ = torch::kCPU;
+        }
+#endif
     } else {
         device_ = torch::kCPU;
     }

@@ -88,7 +88,10 @@
         "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
         "CMAKE_FIND_PACKAGE_PREFER_CONFIG" : "ON",
         "CMAKE_BUILD_TYPE": "Debug",
-        "RESOURCE_COPY_PATH": "/Resources"
+        "RESOURCE_COPY_PATH": "/Resources",
+        "OPT_EXPLORER": "ON",
+        "OPT_EXPLORER_LIBTORCH": "ON",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../libtorch"
       }
     },
     {

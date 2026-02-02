@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Explorer PPO training implementation
 
+// Include DOSBox logging BEFORE torch to avoid macro conflicts
+#include "misc/logging.h"
+
 #include "explorer_training.h"
 #include "explorer.h"
 #include "explorer_memory.h"
@@ -236,15 +239,21 @@ bool PPOTrainer::Init(const TrainingConfig& config) {
     buffer_.Init(config);
     
 #ifdef EXPLORER_ENABLE_LIBTORCH
-    // Select device
+    // Select device - prefer MPS on macOS, CUDA elsewhere
     if (config.use_gpu) {
-        if (torch::cuda::is_available()) {
-            device_ = torch::kCUDA;
-        } else if (torch::hasMPS()) {
+#ifdef __APPLE__
+        if (torch::hasMPS()) {
             device_ = torch::kMPS;
         } else {
             device_ = torch::kCPU;
         }
+#else
+        if (torch::cuda::is_available()) {
+            device_ = torch::kCUDA;
+        } else {
+            device_ = torch::kCPU;
+        }
+#endif
     } else {
         device_ = torch::kCPU;
     }
@@ -280,17 +289,8 @@ bool PPOTrainer::SaveModel([[maybe_unused]] const std::string& path) {
     if (!initialized_) return false;
     
     try {
-        // Save as TorchScript for inference
-        model_->eval();
-        
-        // Create dummy input
-        size_t obs_size = config_.obs_config.GetTotalObsSize();
-        auto dummy = torch::zeros({1, static_cast<long>(obs_size)}).to(device_);
-        
-        auto traced = torch::jit::trace(model_, dummy);
-        traced.save(path);
-        
-        model_->train();
+        // Save model state dict - for later TorchScript export, use Python
+        torch::save(model_, path);
         return true;
     } catch (const c10::Error&) {
         return false;
@@ -489,48 +489,60 @@ PPOTrainer::TrainingStats PPOTrainer::Update() {
 #ifdef EXPLORER_ENABLE_LIBTORCH
     if (!initialized_ || !ReadyForUpdate()) return stats;
     
-    // Get last value for GAE computation
-    auto last_obs = buffer_.GetRandomBatch(1).observations[0];
-    auto obs_tensor = torch::from_blob(
-        last_obs.data(),
-        {1, static_cast<long>(last_obs.size())},
-        torch::kFloat32
-    ).clone().to(device_);
+    LOG_MSG("EXPLORER: PPO Update starting, buffer size=%zu", buffer_.Size());
+    LOG_MSG("EXPLORER: PPO Update obs_size=%zu", config_.obs_config.GetTotalObsSize());
     
-    auto [_, __, last_value] = model_->GetAction(obs_tensor, true);
-    
-    // Compute returns and advantages
-    buffer_.ComputeReturnsAndAdvantages(
-        last_value.item<float>(),
-        config_.gamma,
-        config_.gae_lambda
-    );
-    
-    float total_policy_loss = 0.0f;
-    float total_value_loss = 0.0f;
-    float total_entropy = 0.0f;
-    size_t num_batches = 0;
-    
-    // PPO epochs
-    for (size_t epoch = 0; epoch < config_.epochs_per_update; epoch++) {
-        auto batch = buffer_.GetRandomBatch(config_.batch_size);
+    try {
+        // Get last value for GAE computation (use last observation, not random batch)
+        LOG_MSG("EXPLORER: Getting last observation for GAE");
+        const auto& last_obs = buffer_.GetLastObservation();
+        LOG_MSG("EXPLORER: last_obs size=%zu", last_obs.size());
         
-        // Convert to tensors
-        size_t batch_size = batch.actions.size();
-        size_t obs_size = batch.observations[0].size();
+        auto obs_tensor = torch::from_blob(
+            const_cast<float*>(last_obs.data()),
+            {1, static_cast<long>(last_obs.size())},
+            torch::kFloat32
+        ).clone().to(device_);
         
-        std::vector<float> obs_flat(batch_size * obs_size);
-        for (size_t i = 0; i < batch_size; i++) {
-            std::copy(batch.observations[i].begin(), 
-                     batch.observations[i].end(),
-                     obs_flat.begin() + i * obs_size);
-        }
+        LOG_MSG("EXPLORER: Computing last value");
+        auto [_, __, last_value] = model_->GetAction(obs_tensor, true);
+        
+        // Compute returns and advantages
+        LOG_MSG("EXPLORER: Computing GAE");
+        buffer_.ComputeReturnsAndAdvantages(
+            last_value.item<float>(),
+            config_.gamma,
+            config_.gae_lambda
+        );
+        
+        float total_policy_loss = 0.0f;
+        float total_value_loss = 0.0f;
+        float total_entropy = 0.0f;
+        size_t num_batches = 0;
+        
+        // PPO epochs
+        LOG_MSG("EXPLORER: Starting PPO epochs (%zu)", config_.epochs_per_update);
+        for (size_t epoch = 0; epoch < config_.epochs_per_update; epoch++) {
+            auto batch = buffer_.GetRandomBatch(config_.batch_size);
+            
+            // Convert to tensors
+            size_t batch_size = batch.actions.size();
+            size_t obs_size = batch.observations[0].size();
+            
+            std::vector<float> obs_flat(batch_size * obs_size);
+            for (size_t i = 0; i < batch_size; i++) {
+                std::copy(batch.observations[i].begin(), 
+                         batch.observations[i].end(),
+                         obs_flat.begin() + i * obs_size);
+            }
         
         auto obs_t = torch::from_blob(obs_flat.data(), 
             {static_cast<long>(batch_size), static_cast<long>(obs_size)},
             torch::kFloat32).clone().to(device_);
         
-        auto actions_t = torch::from_blob(batch.actions.data(),
+        // Convert uint32_t actions to int64_t for PyTorch
+        std::vector<int64_t> actions_i64(batch.actions.begin(), batch.actions.end());
+        auto actions_t = torch::from_blob(actions_i64.data(),
             {static_cast<long>(batch_size)},
             torch::kInt64).clone().to(device_);
         
@@ -585,16 +597,25 @@ PPOTrainer::TrainingStats PPOTrainer::Update() {
     stats.policy_loss = total_policy_loss / num_batches;
     stats.value_loss = total_value_loss / num_batches;
     stats.entropy = total_entropy / num_batches;
-    
+
     total_updates_++;
-    
-    // Clear buffer for next rollout
-    buffer_.Clear();
     
     // Auto-save checkpoint
     if (total_updates_ % config_.save_interval == 0) {
         SaveCheckpoint(config_.checkpoint_path);
     }
+    
+    LOG_MSG("EXPLORER: PPO Update #%llu complete - policy_loss=%.4f value_loss=%.4f",
+            total_updates_, stats.policy_loss, stats.value_loss);
+    
+    } catch (const std::exception& e) {
+        LOG_WARNING("EXPLORER: PPO Update failed: %s", e.what());
+    } catch (...) {
+        LOG_WARNING("EXPLORER: PPO Update failed with unknown exception");
+    }
+    
+    // Always clear buffer for next rollout (even on error)
+    buffer_.Clear();
     
 #endif
     
@@ -634,9 +655,16 @@ bool IsTrainingMode() {
 }
 
 void StartTraining(const TrainingConfig& config) {
+    LOG_MSG("EXPLORER: Starting PPO training (lr=%.6f, batch=%zu, steps=%zu, gpu=%s)",
+            config.learning_rate, config.batch_size, config.steps_per_update,
+            config.use_gpu ? "yes" : "no");
+    
     if (g_trainer.Init(config)) {
         g_training_active = true;
         g_training_mode = true;
+        LOG_MSG("EXPLORER: Training initialized successfully");
+    } else {
+        LOG_WARNING("EXPLORER: Training initialization failed");
     }
 }
 
@@ -650,7 +678,29 @@ bool IsTraining() {
 }
 
 void TrainingTick(uint32_t coverage_gain, uint32_t data_gain, bool stalled, bool program_exit) {
+    static uint64_t entry_count = 0;
+    entry_count++;
+    
+    // Log every 50 entries (once per 1M instructions at default tick interval)
+    if (entry_count % 50 == 1) {
+        LOG_MSG("EXPLORER: TrainingTick #%llu, active=%s, buffer=%zu/%zu",
+                entry_count,
+                g_training_active ? "yes" : "no",
+                g_trainer.GetTotalSteps() % g_trainer.GetConfig().steps_per_update,
+                g_trainer.GetConfig().steps_per_update);
+    }
+    
     if (!g_training_active || !g_trainer.IsInitialized()) return;
+    
+    static uint64_t tick_count = 0;
+    tick_count++;
+    
+    // Log every 10000 ticks
+    if (tick_count % 10000 == 0) {
+        LOG_MSG("EXPLORER: Training tick %llu, buffer_size=%zu/%zu",
+                tick_count, g_trainer.GetTotalSteps() % g_trainer.GetConfig().steps_per_update,
+                g_trainer.GetConfig().steps_per_update);
+    }
     
     const auto& config = g_trainer.GetConfig();
     
@@ -686,8 +736,71 @@ void TrainingTick(uint32_t coverage_gain, uint32_t data_gain, bool stalled, bool
         auto stats = g_trainer.Update();
         
         // Log progress
-        // TODO: Use Explorer logging
+        LOG_MSG("EXPLORER: PPO update #%llu - policy_loss=%.4f value_loss=%.4f entropy=%.4f",
+                g_trainer.GetTotalUpdates(), stats.policy_loss, stats.value_loss, stats.entropy);
     }
+}
+
+// =============================================================================
+// Environment Variable Initialization
+// =============================================================================
+
+void Training_InitFromEnv() {
+    const char* enabled = std::getenv("EXPLORER_TRAINING");
+    if (!enabled || std::string(enabled) != "1") {
+        return;  // Training not enabled via env var
+    }
+    
+    LOG_MSG("EXPLORER: Training enabled via EXPLORER_TRAINING=1");
+    
+    TrainingConfig config;
+    
+    // Parse optional environment variables
+    if (const char* lr = std::getenv("EXPLORER_TRAINING_LR")) {
+        config.learning_rate = std::stof(lr);
+        LOG_MSG("EXPLORER: Training LR=%.6f", config.learning_rate);
+    }
+    
+    if (const char* gamma = std::getenv("EXPLORER_TRAINING_GAMMA")) {
+        config.gamma = std::stof(gamma);
+    }
+    
+    if (const char* gpu = std::getenv("EXPLORER_TRAINING_GPU")) {
+        config.use_gpu = (std::string(gpu) == "1");
+        LOG_MSG("EXPLORER: Training GPU=%s", config.use_gpu ? "enabled" : "disabled");
+    }
+    
+    if (const char* batch = std::getenv("EXPLORER_TRAINING_BATCH")) {
+        config.batch_size = std::stoul(batch);
+    }
+    
+    if (const char* steps = std::getenv("EXPLORER_TRAINING_STEPS")) {
+        config.steps_per_update = std::stoul(steps);
+    }
+    
+    if (const char* model = std::getenv("EXPLORER_TRAINING_MODEL")) {
+        config.model_path = model;
+        LOG_MSG("EXPLORER: Training model path: %s", config.model_path.c_str());
+    }
+    
+    if (const char* ckpt = std::getenv("EXPLORER_TRAINING_CHECKPOINT")) {
+        config.checkpoint_path = ckpt;
+    }
+    
+    // Reward shaping from env
+    if (const char* cov_r = std::getenv("EXPLORER_TRAINING_COVERAGE_REWARD")) {
+        config.coverage_reward = std::stof(cov_r);
+    }
+    
+    if (const char* data_r = std::getenv("EXPLORER_TRAINING_DATA_REWARD")) {
+        config.data_reward = std::stof(data_r);
+    }
+    
+    if (const char* stall_p = std::getenv("EXPLORER_TRAINING_STALL_PENALTY")) {
+        config.stall_penalty = std::stof(stall_p);
+    }
+    
+    StartTraining(config);
 }
 
 } // namespace Explorer
