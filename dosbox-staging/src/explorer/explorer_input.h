@@ -110,11 +110,38 @@ void InjectRandomAction();
 void SetInputRandomSeed(uint32_t seed);
 
 // =============================================================================
-// Neural Network Action Space API
+// Neural Network Action Space API (145 discrete actions)
 // =============================================================================
 
+// Action space info for NN training
+struct ActionSpaceInfo {
+    size_t total_actions;          // 145
+    
+    // Action counts per category
+    size_t num_key_press;          // 92 (regular keys: tap down+up)
+    size_t num_modifier_down;      // 7 (shift/ctrl/alt L/R + numlock)
+    size_t num_modifier_up;        // 7
+    size_t num_mouse_move;         // 24 (8 directions × 3 speeds)
+    size_t num_mouse_button_down;  // 3 (left/right/middle)
+    size_t num_mouse_button_up;    // 3
+    size_t num_mouse_click;        // 3 (down+up)
+    size_t num_mouse_dblclick;     // 3
+    size_t num_mouse_wheel;        // 2 (up/down)
+    
+    // Starting indices for each category
+    size_t key_press_start;        // 0
+    size_t modifier_down_start;    // 92
+    size_t modifier_up_start;      // 99
+    size_t mouse_move_start;       // 106
+    size_t mouse_button_down_start;// 130
+    size_t mouse_button_up_start;  // 133
+    size_t mouse_click_start;      // 136
+    size_t mouse_dblclick_start;   // 139
+    size_t mouse_wheel_start;      // 142
+    size_t noop_action;            // 144
+};
+
 // Get total number of discrete actions available
-// This is the action space size for an NN controller
 size_t GetNumActions();
 
 // Get number of keyboard-only actions
@@ -128,13 +155,29 @@ const char* GetActionName(size_t action_id);
 
 // Inject a specific action by ID
 // action_id: 0 to GetNumActions()-1
-// mouse_magnitude: movement amount for mouse actions (default 20.0)
 void InjectAction(size_t action_id, float mouse_magnitude = 20.0f);
 
-// Action space layout:
-//   [0, NUM_KEYBOARD_ACTIONS-1] = Keyboard keys
-//   [NUM_KEYBOARD_ACTIONS, NUM_KEYBOARD_ACTIONS+NUM_MOUSE_ACTIONS-1] = Mouse actions
-//   [TOTAL_ACTIONS-1] = NO_OP (do nothing)
+// Get detailed action space info for NN training
+ActionSpaceInfo GetActionSpaceInfo();
+
+// =============================================================================
+// Action Space Layout (145 actions):
+//
+// [0-91]    Key press (tap): 0-9, a-z, F1-F12, arrows, esc/tab/enter/space, etc.
+// [92-98]   Modifier DOWN:   LSHIFT, RSHIFT, LCTRL, RCTRL, LALT, RALT, NUMLOCK
+// [99-105]  Modifier UP:     same as above (release)
+// [106-129] Mouse move:      8 directions × 3 speeds (slow/med/fast)
+// [130-132] Mouse btn DOWN:  left, right, middle (for drag start)
+// [133-135] Mouse btn UP:    left, right, middle (for drag end)
+// [136-138] Mouse CLICK:     left, right, middle (down+up combo)
+// [139-141] Mouse DBLCLICK:  left, right, middle
+// [142-143] Mouse wheel:     up, down
+// [144]     NO_OP:           do nothing
+//
+// Drag-drop example: MOUSE_LEFT_DOWN → MOUSE_RIGHT_FAST → MOUSE_LEFT_UP
+// Shift-select:      LSHIFT_DOWN → Arrow keys → LSHIFT_UP
+// Ctrl+C:            LCTRL_DOWN → key 'c' → LCTRL_UP
+// =============================================================================
 
 } // namespace Explorer
 
@@ -169,11 +212,21 @@ inline void InjectRandomMouseClick() {}
 inline void InjectRandomAction() {}
 inline void SetInputRandomSeed(uint32_t) {}
 
+struct ActionSpaceInfo {
+    size_t total_actions; size_t num_key_press; size_t num_modifier_down;
+    size_t num_modifier_up; size_t num_mouse_move; size_t num_mouse_button_down;
+    size_t num_mouse_button_up; size_t num_mouse_click; size_t num_mouse_dblclick;
+    size_t num_mouse_wheel; size_t key_press_start; size_t modifier_down_start;
+    size_t modifier_up_start; size_t mouse_move_start; size_t mouse_button_down_start;
+    size_t mouse_button_up_start; size_t mouse_click_start; size_t mouse_dblclick_start;
+    size_t mouse_wheel_start; size_t noop_action;
+};
 inline size_t GetNumActions() { return 0; }
 inline size_t GetNumKeyboardActions() { return 0; }
 inline size_t GetNumMouseActions() { return 0; }
 inline const char* GetActionName(size_t) { return nullptr; }
 inline void InjectAction(size_t, float = 20.0f) {}
+inline ActionSpaceInfo GetActionSpaceInfo() { return {}; }
 
 } // namespace Explorer
 
