@@ -3,6 +3,7 @@
 
 #include "explorer.h"
 
+#include "explorer_input.h"
 #include "explorer_log.h"
 
 #include <cstring>
@@ -357,8 +358,27 @@ void Instrumenter::NotePortOut(uint16_t port, uint16_t value, uint32_t pc_phys) 
 
 void Instrumenter::Tick() {
     timer_ticks_++;
-    // Policy invocation would go here
-    // For now, just update tick counter
+    
+    // Fuzz input injection
+    if (config_.fuzz_enabled) {
+        // Keyboard fuzzing
+        if (config_.fuzz_keyboard_enabled && 
+            config_.fuzz_key_interval > 0 &&
+            (timer_ticks_ % config_.fuzz_key_interval) == 0) {
+            InjectRandomKey();
+        }
+        
+        // Mouse fuzzing
+        if (config_.fuzz_mouse_enabled &&
+            config_.fuzz_mouse_interval > 0 &&
+            (timer_ticks_ % config_.fuzz_mouse_interval) == 0) {
+            InjectRandomMouseMove(config_.fuzz_mouse_max_delta);
+            // Occasionally click
+            if ((timer_ticks_ % (config_.fuzz_mouse_interval * 5)) == 0) {
+                InjectRandomMouseClick();
+            }
+        }
+    }
 
     Explorer::Log_OnTick(inst_counter_);
 }

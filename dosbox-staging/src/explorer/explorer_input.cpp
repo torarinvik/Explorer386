@@ -10,6 +10,7 @@
 #include <random>
 #include <algorithm>
 
+#include "explorer_headless.h"
 #include "hardware/input/keyboard.h"
 #include "hardware/input/mouse.h"
 #include "ints/bios.h"
@@ -236,24 +237,40 @@ const char* KeyCodeToName(int key)
 
 void InjectMouseMove(float dx, float dy)
 {
+    // In headless mode, skip mouse events that would try to capture the window
+    if (IsHeadless()) {
+        s_input_stats.mouse_moves_injected++;
+        return;
+    }
     MOUSE_EventMoved(dx, dy, 0.0f, 0.0f);
     s_input_stats.mouse_moves_injected++;
 }
 
 void InjectMouseMoveTo(float x_abs, float y_abs)
 {
+    if (IsHeadless()) {
+        s_input_stats.mouse_moves_injected++;
+        return;
+    }
     MOUSE_EventMoved(0.0f, 0.0f, x_abs, y_abs);
     s_input_stats.mouse_moves_injected++;
 }
 
 void InjectMouseButton(uint8_t button, bool pressed)
 {
+    if (IsHeadless()) {
+        s_input_stats.mouse_buttons_injected++;
+        return;
+    }
     MOUSE_EventButton(static_cast<MouseButtonId>(button), pressed);
     s_input_stats.mouse_buttons_injected++;
 }
 
 void InjectMouseWheel(int16_t delta)
 {
+    if (IsHeadless()) {
+        return;
+    }
     MOUSE_EventWheel(static_cast<float>(delta));
 }
 

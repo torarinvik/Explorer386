@@ -1142,6 +1142,17 @@ void DOSBOX_InitModules()
 			if (Explorer::Log_IsEnabled()) {
 				LOG_MSG("Explorer logging to %s", Explorer::Log_GetPath().c_str());
 			}
+			
+			// Check if fuzzing is enabled via EXPLORER_FUZZ=1
+			if (const auto* fuzz_env = std::getenv("EXPLORER_FUZZ"); fuzz_env) {
+				const bool fuzz_enabled = (fuzz_env[0] == '1' || fuzz_env[0] == 't' ||
+				                           fuzz_env[0] == 'T' || fuzz_env[0] == 'y' ||
+				                           fuzz_env[0] == 'Y');
+				if (fuzz_enabled) {
+					Explorer::EnableFuzzing(true);
+					LOG_MSG("EXPLORER: Input fuzzing enabled");
+				}
+			}
 		}
 	}
 #endif

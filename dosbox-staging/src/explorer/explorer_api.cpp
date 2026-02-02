@@ -419,6 +419,27 @@ bool LoadState(const std::string& filepath) {
     return false;
 }
 
+// =============================================================================
+// Input Fuzzing Control
+// =============================================================================
+
+void EnableFuzzing(bool enable) {
+    if (!g_initialized) return;
+    GetInstrumenter().SetFuzzEnabled(enable);
+}
+
+bool IsFuzzingEnabled() {
+    if (!g_initialized) return false;
+    return GetInstrumenter().IsFuzzEnabled();
+}
+
+void ConfigureFuzzing(const FuzzConfig& config) {
+    if (!g_initialized) return;
+    GetInstrumenter().SetFuzzKeyInterval(config.key_interval);
+    GetInstrumenter().SetFuzzMouseInterval(config.mouse_interval);
+    // Note: Additional config fields can be added to Instrumenter methods as needed
+}
+
 } // namespace Explorer
 
 #endif // EXPLORER_ENABLED

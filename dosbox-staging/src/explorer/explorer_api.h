@@ -202,6 +202,27 @@ bool DumpState(const std::string& filepath);
 // Load state from file
 bool LoadState(const std::string& filepath);
 
+// =============================================================================
+// Input Fuzzing Control
+// =============================================================================
+
+// Enable or disable input fuzzing
+void EnableFuzzing(bool enable);
+
+// Check if fuzzing is enabled
+bool IsFuzzingEnabled();
+
+// Configure fuzzing parameters
+struct FuzzConfig {
+    uint32_t key_interval = 5;       // Ticks between random key presses
+    uint32_t mouse_interval = 10;    // Ticks between random mouse moves
+    float mouse_max_delta = 30.0f;   // Max mouse movement per tick
+    bool mouse_enabled = true;       // Enable mouse fuzzing
+    bool keyboard_enabled = true;    // Enable keyboard fuzzing
+};
+
+void ConfigureFuzzing(const FuzzConfig& config);
+
 } // namespace Explorer
 
 #else // !EXPLORER_ENABLED
@@ -233,6 +254,12 @@ struct StallInfo { bool is_stalled; uint32_t repeated_pc_count; uint32_t loop_it
 inline StallInfo GetStallInfo() { return {}; }
 
 inline std::string GetStatusString() { return "Explorer disabled"; }
+
+inline void EnableFuzzing(bool) {}
+inline bool IsFuzzingEnabled() { return false; }
+struct FuzzConfig { uint32_t key_interval; uint32_t mouse_interval; 
+                    float mouse_max_delta; bool mouse_enabled; bool keyboard_enabled; };
+inline void ConfigureFuzzing(const FuzzConfig&) {}
 
 } // namespace Explorer
 

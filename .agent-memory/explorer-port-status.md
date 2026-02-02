@@ -40,6 +40,7 @@ New files added:
 EXPLORER_ENABLE=1         # Enable Explorer instrumentation
 EXPLORER_HEADLESS=1       # Run without GUI (SDL dummy drivers)
 EXPLORER_HEADLESS_AUDIO=1 # Keep audio in headless mode (default: disabled)
+EXPLORER_FUZZ=1           # Enable random keyboard input fuzzing
 EXPLORER_LOG=path         # Enable logging to file
 EXPLORER_LOG_EVERY=N      # Log every N instructions
 ```
@@ -59,9 +60,9 @@ EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/d
 ```
 
 ## Next Steps:
-1. ⬜ Test headless mode with a real game
+1. ✅ Test headless mode with a real game
 2. ⬜ Integrate trace recording into instruction hooks
-3. ⬜ Test input injection APIs
+3. ✅ Test input injection APIs (keyboard fuzzing working)
 4. ⬜ Test memory/register/VRAM access
 5. ⬜ Create convenience Python/shell wrappers
 

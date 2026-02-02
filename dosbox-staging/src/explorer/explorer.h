@@ -53,6 +53,14 @@ struct Config {
     // Policy settings
     uint32_t tick_interval = 20000;  // Instructions between policy ticks
     
+    // Fuzz input settings
+    bool fuzz_enabled = false;         // Enable random input injection
+    uint32_t fuzz_key_interval = 5;    // Ticks between random key presses
+    uint32_t fuzz_mouse_interval = 10; // Ticks between random mouse moves
+    float fuzz_mouse_max_delta = 30.0f; // Max mouse movement per tick
+    bool fuzz_mouse_enabled = true;    // Enable mouse fuzzing
+    bool fuzz_keyboard_enabled = true; // Enable keyboard fuzzing
+    
     // Output
     std::string output_path = "explore_out.json";
 };
@@ -168,6 +176,12 @@ public:
     // Instruction counter
     uint64_t GetInstCounter() const { return inst_counter_; }
     void IncrementInstCounter() { inst_counter_++; }
+    
+    // Fuzzing control
+    void SetFuzzEnabled(bool enabled) { config_.fuzz_enabled = enabled; }
+    bool IsFuzzEnabled() const { return config_.fuzz_enabled; }
+    void SetFuzzKeyInterval(uint32_t interval) { config_.fuzz_key_interval = interval; }
+    void SetFuzzMouseInterval(uint32_t interval) { config_.fuzz_mouse_interval = interval; }
     
     // Current PC (for other modules)
     uint32_t GetCurrentPC() const { return current_pc_; }
