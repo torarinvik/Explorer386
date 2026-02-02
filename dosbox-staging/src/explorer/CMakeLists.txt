@@ -15,6 +15,7 @@ target_sources(libdosboxcommon PRIVATE
     explorer_memory.cpp
     explorer_trace.cpp
     explorer_state.cpp
+    explorer_training.cpp
 )
 
 target_compile_definitions(libdosboxcommon PUBLIC EXPLORER_ENABLED)
