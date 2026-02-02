@@ -21,6 +21,10 @@
 #include "debugger/debugger.h"
 #endif
 
+#ifdef EXPLORER_ENABLED
+#include "explorer/explorer_hooks.h"
+#endif
+
 #if (!C_CORE_INLINE)
 #define LoadMb(off) mem_readb(off)
 #define LoadMw(off) mem_readw(off)
@@ -149,6 +153,12 @@ Bits CPU_Core_Normal_Run() noexcept
 #endif
 		cycle_count++;
 #endif
+
+#ifdef EXPLORER_ENABLED
+		// Explorer pre-instruction hook - track coverage before decode
+		EXPLORER_PRE_INSTRUCTION(core.cseip);
+#endif
+
 restart_opcode:
 		switch (core.opcode_index+Fetchb()) {
 		#include "core_normal/prefix_none.h"
@@ -173,6 +183,12 @@ restart_opcode:
 			CPU_Exception(6,0);
 			continue;
 		}
+
+#ifdef EXPLORER_ENABLED
+		// Explorer post-instruction hook
+		EXPLORER_POST_INSTRUCTION();
+#endif
+
 		SAVEIP;
 	}
 	FillFlags();
