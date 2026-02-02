@@ -11,6 +11,11 @@
 #include <limits>
 #include <memory>
 
+#ifdef EXPLORER_ENABLED
+#include "explorer/explorer_api.h"
+#include "explorer/explorer_log.h"
+#endif
+
 #ifdef WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -1102,6 +1107,22 @@ void DOSBOX_InitModules()
 {
 	DOSBOX_Init();
 
+#ifdef EXPLORER_ENABLED
+	// Runtime-enable Explorer via environment variable to keep default builds fast.
+	// Set EXPLORER_ENABLE=1 to activate instrumentation.
+	if (const auto* enable_env = std::getenv("EXPLORER_ENABLE"); enable_env) {
+		const bool enabled = (enable_env[0] == '1' || enable_env[0] == 't' ||
+		                      enable_env[0] == 'T' || enable_env[0] == 'y' ||
+		                      enable_env[0] == 'Y');
+		if (enabled) {
+			Explorer::Initialize();
+			if (Explorer::Log_IsEnabled()) {
+				LOG_MSG("Explorer logging to %s", Explorer::Log_GetPath().c_str());
+			}
+		}
+	}
+#endif
+
 #if C_DEBUGGER
 	LOG_StartUp();
 	LOG_Init();
@@ -1153,6 +1174,11 @@ void DOSBOX_InitModules()
 
 void DOSBOX_DestroyModules()
 {
+
+#ifdef EXPLORER_ENABLED
+	Explorer::Shutdown();
+#endif
+
 	VMWARE_Destroy();
 	VIRTUALBOX_Destroy();
 	ETHERNET_Destroy();

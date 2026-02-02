@@ -59,6 +59,12 @@ target_sources(libdosboxcommon PRIVATE
   programs/tree.cpp
 )
 
+if (OPT_EXPLORER)
+  target_sources(libdosboxcommon PRIVATE
+    programs/explorerdump.cpp
+  )
+endif()
+
 target_sources(dosbox PRIVATE dos_files.cpp)
 
 target_link_libraries(libdosboxcommon PRIVATE

@@ -31,6 +31,10 @@
 #include "programs/showpic.h"
 #include "programs/subst.h"
 #include "programs/tree.h"
+
+#ifdef EXPLORER_ENABLED
+#include "programs/explorerdump.h"
+#endif
 #include "shell/autoexec.h"
 
 #if C_DEBUGGER
@@ -91,6 +95,11 @@ void DOS_SetupPrograms()
 	PROGRAMS_MakeFile("SHOWPIC.EXE", ProgramCreate<SHOWPIC>);
 	PROGRAMS_MakeFile("SUBST.EXE", ProgramCreate<SUBST>);
 	PROGRAMS_MakeFile("TREE.COM", ProgramCreate<TREE>);
+
+#ifdef EXPLORER_ENABLED
+	PROGRAMS_MakeFile("EXPDUMP.COM", ProgramCreate<EXPLORERDUMP>);
+	PROGRAMS_MakeFile("XDUMP.COM", ProgramCreate<EXPLORERDUMP>);
+#endif
 
 	REELMAGIC_MaybeCreateFmpdrvExecutable();
 
