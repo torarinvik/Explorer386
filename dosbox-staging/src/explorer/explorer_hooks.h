@@ -9,6 +9,7 @@
 
 #include "explorer/explorer.h"
 #include "explorer/explorer_data.h"
+#include "explorer/explorer_trace.h"
 
 // =============================================================================
 // Hook Macros for CPU Cores
@@ -29,6 +30,9 @@
     do { \
         if (Explorer::InstrumentationEnabled()) { \
             Explorer::GetInstrumenter().PostInstruction((prev_phys), (next_phys)); \
+            if (Explorer::IsTraceEnabled()) { \
+                Explorer::RecordInstruction((prev_phys), 0, 0); \
+            } \
         } \
     } while(0)
 

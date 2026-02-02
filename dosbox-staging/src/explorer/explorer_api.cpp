@@ -9,6 +9,7 @@
 #include "explorer_data.h"
 #include "explorer_nn.h"
 #include "explorer_log.h"
+#include "explorer_trace.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -84,6 +85,12 @@ bool InitializeWithConfig(const ExplorerConfig& config) {
         }
     }
 #endif
+    
+    // Initialize trace recording
+    if (config.enable_tracing && config.trace_ring_size > 0) {
+        SetTraceDepth(config.trace_ring_size);
+        SetTraceEnabled(true);
+    }
     
     g_initialized = true;
 

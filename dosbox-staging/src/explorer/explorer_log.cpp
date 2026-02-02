@@ -5,6 +5,8 @@
 
 #include "explorer.h"
 #include "explorer_data.h"
+#include "explorer_trace.h"
+#include "explorer_memory.h"
 
 #include <chrono>
 #include <cctype>
@@ -86,6 +88,14 @@ static void write_snapshot_line(const char* reason)
 	g_log << " data_new_bits=" << data.GetGlobalNewBits();
 	g_log << " stalled=" << (inst.IsStalled() ? 1 : 0);
 	g_log << " stop=" << (inst.ShouldStop() ? StopReasonName(inst.GetStopReason()) : "no");
+	
+	// Include trace count
+	g_log << " traced=" << GetTracedInstructionCount();
+	
+	// Include memory info
+	g_log << " mem_base=" << (void*)GetMemoryBase();
+	g_log << " mem_size=" << GetMemorySize();
+	
 	g_log << "\n";
 
 	g_log.flush();

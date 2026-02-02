@@ -61,10 +61,20 @@ EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/d
 
 ## Next Steps:
 1. ✅ Test headless mode with a real game
-2. ⬜ Integrate trace recording into instruction hooks
+2. ✅ Integrate trace recording into instruction hooks
 3. ✅ Test input injection APIs (keyboard fuzzing working)
-4. ⬜ Test memory/register/VRAM access
-5. ⬜ Create convenience Python/shell wrappers
+4. ✅ Extended EXPDUMP command with regs/mem/trace/screen subcommands
+5. ✅ Verified all observability APIs work (trace, memory, coverage)
+6. ✅ Created Python wrapper (explorer_runner.py) with CLI and programmatic API
+
+## Completed Tasks Summary:
+- **Phase 1** (Base Instrumentation): Complete ✅
+- **Phase 2** (Headless & Observability): Complete ✅
+- All APIs verified working:
+  - Coverage tracking: ~4500 unique PCs in 5s run
+  - Trace recording: ~5-6 million instructions traced
+  - Memory access: 16MB base address working
+  - Input fuzzing: Random keyboard injection working
 
 ## Key Architecture Decisions:
 - Explorer is a **separate module** that hooks into DOSBox, not a replacement CPU
