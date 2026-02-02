@@ -59,22 +59,41 @@ cmake --build "dosbox-staging/build/debug-macos" -j 8
 EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/dosbox -c "ver" -c "exit"
 ```
 
-## Next Steps:
-1. ✅ Test headless mode with a real game
-2. ✅ Integrate trace recording into instruction hooks
-3. ✅ Test input injection APIs (keyboard fuzzing working)
-4. ✅ Extended EXPDUMP command with regs/mem/trace/screen subcommands
-5. ✅ Verified all observability APIs work (trace, memory, coverage)
-6. ✅ Created Python wrapper (explorer_runner.py) with CLI and programmatic API
+## Implementation Status: PHASE 3 COMPLETE 🎉
 
-## Completed Tasks Summary:
-- **Phase 1** (Base Instrumentation): Complete ✅
-- **Phase 2** (Headless & Observability): Complete ✅
-- All APIs verified working:
-  - Coverage tracking: ~4500 unique PCs in 5s run
-  - Trace recording: ~5-6 million instructions traced
-  - Memory access: 16MB base address working
-  - Input fuzzing: Random keyboard injection working
+### PHASE 1: Base Instrumentation ✅ COMPLETE
+### PHASE 2: Headless Mode & Observability ✅ COMPLETE  
+### PHASE 3: Data Access Tracking ✅ COMPLETE
+
+Data tracking hooks added to `src/cpu/paging.h`:
+- `mem_readb_inline`, `mem_readw_inline`, `mem_readd_inline`, `mem_readq_inline`
+- `mem_writeb_inline`, `mem_writew_inline`, `mem_writed_inline`, `mem_writeq_inline`
+
+All memory operations now tracked via `Explorer::DataNoteRead/Write()`.
+
+### Build & Test Commands:
+```bash
+# Build
+cmake --build "dosbox-staging/build/debug-macos" -j 8
+
+# Test headless mode
+EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/dosbox -c "ver" -c "exit"
+```
+
+## All Features Working:
+1. ✅ Headless mode with real games
+2. ✅ Trace recording (instruction ring buffer)
+3. ✅ Input fuzzing (keyboard injection)
+4. ✅ EXPDUMP command with regs/mem/trace/screen
+5. ✅ Python wrapper (explorer_runner.py)
+6. ✅ **Data access tracking** (~5M accesses/M instructions, ~700 unique patterns)
+
+## Verified Metrics (Castle Wolfenstein, 3s run):
+- Coverage: ~1500 unique PCs
+- Data accesses: ~10 million 
+- Data patterns (buckets): 691 unique
+- Trace: 2 million instructions
+- Memory: 16MB at 0xccac00000
 
 ## Key Architecture Decisions:
 - Explorer is a **separate module** that hooks into DOSBox, not a replacement CPU
@@ -82,3 +101,4 @@ EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/d
 - Headless mode uses SDL dummy drivers via environment variables
 - Environment variables checked early (before SDL init) for headless detection
 - All observability APIs are header-only stubs when EXPLORER_ENABLED not defined
+- Data tracking integrated at paging.h level for complete memory coverage

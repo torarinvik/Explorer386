@@ -85,7 +85,8 @@ static void write_snapshot_line(const char* reason)
 	g_log << " run_new_cov=" << inst.GetRunNewBits();
 	g_log << " global_new_cov=" << inst.GetGlobalNewBits();
 	g_log << " data_accesses=" << data.GetTotalAccesses();
-	g_log << " data_new_bits=" << data.GetGlobalNewBits();
+	g_log << " data_run_new=" << data.GetRunNewBits();
+	g_log << " data_global_new=" << data.GetGlobalNewBits();
 	g_log << " stalled=" << (inst.IsStalled() ? 1 : 0);
 	g_log << " stop=" << (inst.ShouldStop() ? StopReasonName(inst.GetStopReason()) : "no");
 	
