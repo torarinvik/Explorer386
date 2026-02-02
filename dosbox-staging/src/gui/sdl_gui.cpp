@@ -42,6 +42,10 @@
 #include "utils/rect.h"
 #include "utils/string_utils.h"
 
+#ifdef EXPLORER_ENABLED
+#include "explorer/explorer_headless.h"
+#endif
+
 // must be included after dosbox_config.h
 #include <SDL.h>
 
@@ -1805,6 +1809,11 @@ static void handle_macos_dosbox_package_drop(const std::string& dropped_file_pat
 
 void GFX_InitSdl()
 {
+#ifdef EXPLORER_ENABLED
+	// Setup headless mode environment variables before SDL init
+	Explorer::SetupHeadlessEnvironment();
+#endif
+
 	set_sdl_hints();
 
 	// Initialise SDL (timer is needed for title bar animations)
