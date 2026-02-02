@@ -170,6 +170,24 @@ void Log_Shutdown()
 	g_log_path.clear();
 }
 
+void Log_Event(const char* event_type, const char* message)
+{
+	if (!g_log_enabled || !g_log.is_open()) {
+		return;
+	}
+
+	auto& inst = GetInstrumenter();
+	
+	g_log << now_string();
+	g_log << " [" << (event_type ? event_type : "event") << "]";
+	g_log << " inst=" << inst.GetInstructionCount();
+	if (message && *message) {
+		g_log << " " << message;
+	}
+	g_log << "\n";
+	g_log.flush();
+}
+
 bool Log_IsEnabled()
 {
 	return g_log_enabled;

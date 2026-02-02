@@ -75,6 +75,24 @@
         } \
     } while(0)
 
+// Call when DOS loads a program (from DOS_Execute)
+// name: program path, success: whether load succeeded
+#define EXPLORER_NOTE_PROGRAM_LOAD(name, success) \
+    do { \
+        if (Explorer::InstrumentationEnabled()) { \
+            Explorer::NoteProgramLoad((name), (success)); \
+        } \
+    } while(0)
+
+// Call when DOS terminates a program (from DOS_Terminate)
+// exit_code: the program's exit code, is_tsr: true if terminate-and-stay-resident
+#define EXPLORER_NOTE_PROGRAM_EXIT(exit_code, is_tsr) \
+    do { \
+        if (Explorer::InstrumentationEnabled()) { \
+            Explorer::NoteProgramExit((exit_code), (is_tsr)); \
+        } \
+    } while(0)
+
 // =============================================================================
 // Convenience for physical address computation
 // =============================================================================
@@ -101,6 +119,8 @@ inline uint32_t Explorer_GetPhysicalPC(uint16_t cs_base_high, uint32_t eip) {
 #define EXPLORER_NOTE_INTERRUPT(num) ((void)0)
 #define EXPLORER_NOTE_PORT_IN(port, value) ((void)0)
 #define EXPLORER_NOTE_PORT_OUT(port, value) ((void)0)
+#define EXPLORER_NOTE_PROGRAM_LOAD(name, success) ((void)0)
+#define EXPLORER_NOTE_PROGRAM_EXIT(exit_code, is_tsr) ((void)0)
 
 #endif // EXPLORER_ENABLED
 

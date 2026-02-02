@@ -28,6 +28,9 @@ void Log_OnTick(uint64_t instruction_count);
 // Flushes and closes the log.
 void Log_Shutdown();
 
+// Logs a custom event message.
+void Log_Event(const char* event_type, const char* message);
+
 bool Log_IsEnabled();
 std::string Log_GetPath();
 

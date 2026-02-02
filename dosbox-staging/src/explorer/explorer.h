@@ -315,6 +315,10 @@ inline void NotePortOut(uint16_t port, uint16_t val) {
         GetInstrumenter().NotePortOut(port, val, 0);
 }
 
+// Program lifecycle notifications
+void NoteProgramLoad(const char* name, bool success);
+void NoteProgramExit(uint8_t exit_code, bool is_tsr);
+
 inline bool ShouldStop() {
     return GetInstrumenter().IsEnabled() && GetInstrumenter().ShouldStop();
 }

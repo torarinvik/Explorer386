@@ -433,6 +433,65 @@ uint32_t Instrumenter::CommitGain() {
 }
 
 // =============================================================================
+// Program Lifecycle Logging
+// =============================================================================
+
+static std::string g_current_program;
+static uint64_t g_program_load_inst = 0;
+static bool g_program_loaded = false;
+
+void NoteProgramLoad(const char* name, bool success) {
+    if (!InstrumentationEnabled()) return;
+    
+    char buf[512];
+    if (success) {
+        g_current_program = name ? name : "unknown";
+        g_program_load_inst = GetInstrumenter().GetInstructionCount();
+        g_program_loaded = true;
+        
+        snprintf(buf, sizeof(buf), "name=\"%s\" result=success", 
+                 g_current_program.c_str());
+        Log_Event("program_load", buf);
+    } else {
+        snprintf(buf, sizeof(buf), "name=\"%s\" result=FAILED (file not found or load error)", 
+                 name ? name : "unknown");
+        Log_Event("program_load", buf);
+    }
+}
+
+void NoteProgramExit(uint8_t exit_code, bool is_tsr) {
+    if (!InstrumentationEnabled()) return;
+    
+    uint64_t inst_ran = 0;
+    if (g_program_loaded) {
+        inst_ran = GetInstrumenter().GetInstructionCount() - g_program_load_inst;
+    }
+    
+    char buf[512];
+    snprintf(buf, sizeof(buf), 
+             "name=\"%s\" exit_code=%u is_tsr=%s instructions_executed=%lu",
+             g_current_program.c_str(),
+             exit_code,
+             is_tsr ? "true" : "false",
+             static_cast<unsigned long>(inst_ran));
+    Log_Event("program_exit", buf);
+    
+    // Detect likely error exits
+    if (exit_code != 0 && inst_ran < 1000000) {
+        // Program exited quickly with non-zero code - likely missing files or error
+        snprintf(buf, sizeof(buf), 
+                 "POSSIBLE ISSUE: Program \"%s\" exited quickly (after %lu instructions) with code %u - may be missing data files or encountering an error",
+                 g_current_program.c_str(),
+                 static_cast<unsigned long>(inst_ran),
+                 exit_code);
+        Log_Event("warning", buf);
+    }
+    
+    g_program_loaded = false;
+    g_current_program.clear();
+}
+
+// =============================================================================
 // Global Singleton
 // =============================================================================
 

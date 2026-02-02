@@ -3,101 +3,112 @@
 ## Project Overview
 Porting Explorer (8086tiny fork) instrumentation capabilities into DOSBox-Staging for 386+ CPU support.
 
-## Implementation Status: PHASE 2 IN PROGRESS 🚧
-
-### PHASE 1: Base Instrumentation ✅ COMPLETE
-All files in `dosbox-staging/src/explorer/`:
-- **CMakeLists.txt** - Build config with EXPLORER_ENABLED define
-- **explorer.h** - Main instrumentation API (Instrumenter class, Config, hooks)
-- **explorer.cpp** - Coverage tracking, edge logging, stall detection, loop detection
-- **explorer_data.h** - Data access tracking header (32-bit read/write support)
-- **explorer_data.cpp** - Data bucket tracking implementation
-- **explorer_nn.h** - Neural network policy header (LibTorch optional)
-- **explorer_nn.cpp** - Policy network and action queue implementation
-- **explorer_hooks.h** - CPU core integration macros
-- **explorer_api.h** - Public API for external control
-- **explorer_api.cpp** - API implementation
-- **explorer_log.h/.cpp** - Host-side logging to file
-
-### PHASE 2: Headless Mode & Observability ✅ COMPLETE
-New files added:
-- **explorer_headless.h/.cpp** - Headless mode control (SDL dummy drivers)
-- **explorer_input.h/.cpp** - Keyboard/mouse input injection APIs
-- **explorer_cpu.h/.cpp** - CPU register access
-- **explorer_memory.h/.cpp** - RAM/VRAM read access
-- **explorer_trace.h/.cpp** - Instruction trace window (ring buffer)
-
-### DOSBox Integration Points Modified:
-1. **dosbox-staging/CMakeLists.txt** - Added OPT_EXPLORER and OPT_EXPLORER_LIBTORCH options
-2. **dosbox-staging/src/CMakeLists.txt** - Added explorer subdirectory conditional
-3. **dosbox-staging/src/cpu/core_normal.cpp** - Added EXPLORER_PRE/POST_INSTRUCTION hooks
-4. **dosbox-staging/src/cpu/cpu.cpp** - Added EXPLORER_NOTE_INTERRUPT hook
-5. **dosbox-staging/src/gui/sdl_gui.cpp** - Headless environment setup before SDL init
-6. **dosbox-staging/src/dosbox.cpp** - Headless env var handling in InitModules
-
-### Environment Variables:
-```bash
-EXPLORER_ENABLE=1         # Enable Explorer instrumentation
-EXPLORER_HEADLESS=1       # Run without GUI (SDL dummy drivers)
-EXPLORER_HEADLESS_AUDIO=1 # Keep audio in headless mode (default: disabled)
-EXPLORER_FUZZ=1           # Enable random keyboard input fuzzing
-EXPLORER_LOG=path         # Enable logging to file
-EXPLORER_LOG_EVERY=N      # Log every N instructions
-```
-
-### Build & Test Status:
-- ✅ Build succeeds with all new modules
-- ✅ Headless mode verified: `SDL: dummy video initialised`
-- ✅ DOSBox runs commands and exits cleanly in headless mode
-
-### Current Working Commands:
-```bash
-# Build
-cmake --build "dosbox-staging/build/debug-macos" -j 8
-
-# Test headless mode
-EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/dosbox -c "ver" -c "exit"
-```
-
-## Implementation Status: PHASE 3 COMPLETE 🎉
+## Implementation Status: PHASE 5 IN PROGRESS 🚧
 
 ### PHASE 1: Base Instrumentation ✅ COMPLETE
 ### PHASE 2: Headless Mode & Observability ✅ COMPLETE  
 ### PHASE 3: Data Access Tracking ✅ COMPLETE
+### PHASE 4: Policy/RL Integration 📋 PENDING
+### PHASE 5: Testing & Optimization 🚧 IN PROGRESS
 
-Data tracking hooks added to `src/cpu/paging.h`:
-- `mem_readb_inline`, `mem_readw_inline`, `mem_readd_inline`, `mem_readq_inline`
-- `mem_writeb_inline`, `mem_writew_inline`, `mem_writed_inline`, `mem_writeq_inline`
+## Phase 5 Progress
 
-All memory operations now tracked via `Explorer::DataNoteRead/Write()`.
+### Program Lifecycle Logging ✅ NEW
+Added DOS program load/exit detection to help diagnose game compatibility:
+- `EXPLORER_NOTE_PROGRAM_LOAD(name, success)` - Logs when DOS loads a program
+- `EXPLORER_NOTE_PROGRAM_EXIT(exit_code, is_tsr)` - Logs when program terminates
+- Automatic warning for quick exits with non-zero exit codes (likely missing files)
 
-### Build & Test Commands:
-```bash
-# Build
-cmake --build "dosbox-staging/build/debug-macos" -j 8
+Files modified:
+- `src/explorer/explorer_hooks.h` - Added macros
+- `src/explorer/explorer.h` - Added function declarations
+- `src/explorer/explorer.cpp` - Added implementations
+- `src/explorer/explorer_log.h/.cpp` - Added Log_Event function
+- `src/dos/dos_execute.cpp` - Added hooks in DOS_Execute and DOS_Terminate
 
-# Test headless mode
-EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 ./dosbox-staging/build/debug-macos/Debug/dosbox -c "ver" -c "exit"
+### Game Testing Results
+
+| Game | Type | Status | Notes |
+|------|------|--------|-------|
+| Castle Wolfenstein | Real Mode | ✅ Works | ~1500 coverage, millions of data accesses |
+| Carmageddon Splat Pack | 386 PM (DOS/4GW) | ✅ Works | 3048 coverage, 68M data accesses |
+| Duke Nukem 3D | 386 PM (DOS/4GW) | ❌ Missing Files | Exit code 40, needs GRP file |
+| Heretic | 386 PM (DOS/4GW) | ❌ Missing Files | Missing WAD file |
+
+### Carmageddon Test Metrics (15s run):
+```
+Coverage: 3,048 unique PCs
+Instructions: 1,000,000+ 
+Data accesses: 67,978,339
+Data patterns: 11,605 unique buckets
+DOS/4GW extender: Loaded successfully
 ```
 
-## All Features Working:
-1. ✅ Headless mode with real games
-2. ✅ Trace recording (instruction ring buffer)
-3. ✅ Input fuzzing (keyboard injection)
-4. ✅ EXPDUMP command with regs/mem/trace/screen
-5. ✅ Python wrapper (explorer_runner.py)
-6. ✅ **Data access tracking** (~5M accesses/M instructions, ~700 unique patterns)
+### Sample Log Output (Duke3D):
+```
+[program_load] inst=22 name="duke3d.EXE" result=success
+[program_exit] inst=53040 name="duke3d.EXE" exit_code=40 is_tsr=false instructions_executed=53018
+[warning] POSSIBLE ISSUE: Program "duke3d.EXE" exited quickly (after 53018 instructions) with code 40 - may be missing data files
+```
 
-## Verified Metrics (Castle Wolfenstein, 3s run):
-- Coverage: ~1500 unique PCs
-- Data accesses: ~10 million 
-- Data patterns (buckets): 691 unique
-- Trace: 2 million instructions
-- Memory: 16MB at 0xccac00000
+## All Files in dosbox-staging/src/explorer/:
+- CMakeLists.txt
+- explorer.h/.cpp - Main instrumentation, coverage, program lifecycle
+- explorer_api.h/.cpp - Public API
+- explorer_cpu.h/.cpp - CPU register access
+- explorer_data.h/.cpp - Data access tracking
+- explorer_headless.h/.cpp - Headless mode control
+- explorer_hooks.h - CPU/DOS integration macros
+- explorer_input.h/.cpp - Input injection
+- explorer_log.h/.cpp - Host-side logging, event logging
+- explorer_memory.h/.cpp - RAM/VRAM access
+- explorer_nn.h/.cpp - Neural network policy (LibTorch)
+- explorer_trace.h/.cpp - Instruction trace window
+
+## DOSBox Integration Points:
+1. **CMakeLists.txt** - OPT_EXPLORER and OPT_EXPLORER_LIBTORCH
+2. **src/cpu/core_normal.cpp** - EXPLORER_PRE/POST_INSTRUCTION
+3. **src/cpu/cpu.cpp** - EXPLORER_NOTE_INTERRUPT
+4. **src/cpu/paging.h** - EXPLORER_NOTE_READ/WRITE (data tracking)
+5. **src/dos/dos_execute.cpp** - EXPLORER_NOTE_PROGRAM_LOAD/EXIT ⬅️ NEW
+6. **src/gui/sdl_gui.cpp** - Headless environment setup
+7. **src/dosbox.cpp** - Headless env var handling
+
+## Environment Variables:
+```bash
+EXPLORER_ENABLE=1           # Enable Explorer instrumentation
+EXPLORER_HEADLESS=1         # Run without GUI (SDL dummy drivers)
+EXPLORER_HEADLESS_AUDIO=1   # Keep audio in headless mode
+EXPLORER_FUZZ=1             # Enable random keyboard input fuzzing
+EXPLORER_LOG=path           # Enable logging to file
+EXPLORER_LOG_EVERY=N        # Log every N instructions
+```
+
+## Build Commands:
+```bash
+cmake --build --preset debug-macos
+```
+
+## Test Commands:
+```bash
+# Test with program lifecycle logging
+EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 EXPLORER_FUZZ=1 EXPLORER_LOG=/tmp/test.log \
+  timeout 15 ./build/debug-macos/Debug/dosbox \
+  -c "mount c /path/to/game" -c "c:" -c "game"
+
+# Check log for issues
+cat /tmp/test.log | grep -E "program_|warning"
+```
+
+## Next Steps (Phase 5):
+- [ ] Profile instrumentation overhead (with/without Explorer)
+- [ ] Test more 386 protected mode games with complete files
+- [ ] Consider dynamic core support (core_dynrec hooks)
 
 ## Key Architecture Decisions:
 - Explorer is a **separate module** that hooks into DOSBox, not a replacement CPU
 - Uses compile-time EXPLORER_ENABLED flag for zero overhead when disabled
+- Program lifecycle logging helps distinguish emulator issues from game issues
 - Headless mode uses SDL dummy drivers via environment variables
 - Environment variables checked early (before SDL init) for headless detection
 - All observability APIs are header-only stubs when EXPLORER_ENABLED not defined
