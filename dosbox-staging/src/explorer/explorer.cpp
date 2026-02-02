@@ -5,6 +5,7 @@
 
 #include "explorer_input.h"
 #include "explorer_log.h"
+#include "explorer_state.h"
 
 #include <cstring>
 #include <algorithm>
@@ -439,6 +440,36 @@ uint32_t Instrumenter::CommitGain() {
 static std::string g_current_program;
 static uint64_t g_program_load_inst = 0;
 static bool g_program_loaded = false;
+static bool g_auto_save_on_load = false;
+
+void SetAutoSaveOnLoad(bool enabled) {
+    g_auto_save_on_load = enabled;
+}
+
+bool IsAutoSaveOnLoadEnabled() {
+    return g_auto_save_on_load;
+}
+
+// Check if a program is a DOSBox internal command (skip for auto-save)
+static bool IsInternalProgram(const std::string& name) {
+    // DOSBox internal commands are on Z: drive
+    if (name.length() > 2 && (name[0] == 'Z' || name[0] == 'z') && name[1] == ':') {
+        return true;
+    }
+    if (name.length() > 3 && name[0] == 'Z' && name[1] == '\\') {
+        return true;
+    }
+    // Also skip common DOSBox utilities
+    std::string upper_name = name;
+    for (char& c : upper_name) c = static_cast<char>(toupper(c));
+    if (upper_name.find("MOUSE.COM") != std::string::npos ||
+        upper_name.find("MOUNT.COM") != std::string::npos ||
+        upper_name.find("CONFIG.COM") != std::string::npos ||
+        upper_name.find("KEYB.COM") != std::string::npos) {
+        return true;
+    }
+    return false;
+}
 
 void NoteProgramLoad(const char* name, bool success) {
     if (!InstrumentationEnabled()) return;
@@ -449,9 +480,23 @@ void NoteProgramLoad(const char* name, bool success) {
         g_program_load_inst = GetInstrumenter().GetInstructionCount();
         g_program_loaded = true;
         
+        // Update state module with current program name
+        SetCurrentProgramName(g_current_program);
+        
         snprintf(buf, sizeof(buf), "name=\"%s\" result=success", 
                  g_current_program.c_str());
         Log_Event("program_load", buf);
+        
+        // Auto-save state if enabled (for auto-restore on exit)
+        // Skip internal DOSBox programs
+        if (g_auto_save_on_load && IsAutoRestoreEnabled() && !IsInternalProgram(g_current_program)) {
+            int slot = GetAutoRestoreSlot();
+            if (SaveState(slot)) {
+                snprintf(buf, sizeof(buf), "Auto-saved state to slot %d for program \"%s\"",
+                         slot, g_current_program.c_str());
+                Log_Event("auto_save", buf);
+            }
+        }
     } else {
         snprintf(buf, sizeof(buf), "name=\"%s\" result=FAILED (file not found or load error)", 
                  name ? name : "unknown");
@@ -485,6 +530,14 @@ void NoteProgramExit(uint8_t exit_code, bool is_tsr) {
                  static_cast<unsigned long>(inst_ran),
                  exit_code);
         Log_Event("warning", buf);
+    }
+    
+    // Check for auto-restore (if enabled and exit code matches)
+    // This allows the agent to resume from a saved state instead of exiting
+    if (OnProgramExit(exit_code, is_tsr)) {
+        // State was restored - don't clear program info
+        Log_Event("auto_restore", "Program state restored, continuing execution");
+        return;
     }
     
     g_program_loaded = false;

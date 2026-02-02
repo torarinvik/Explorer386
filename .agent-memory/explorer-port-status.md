@@ -13,43 +13,57 @@ Porting Explorer (8086tiny fork) instrumentation capabilities into DOSBox-Stagin
 
 ## Phase 5 Progress
 
-### Program Lifecycle Logging ✅ NEW
-Added DOS program load/exit detection to help diagnose game compatibility:
-- `EXPLORER_NOTE_PROGRAM_LOAD(name, success)` - Logs when DOS loads a program
-- `EXPLORER_NOTE_PROGRAM_EXIT(exit_code, is_tsr)` - Logs when program terminates
-- Automatic warning for quick exits with non-zero exit codes (likely missing files)
+### Program Lifecycle Logging ✅ COMPLETE
+Added DOS program load/exit detection to help diagnose game compatibility.
 
-Files modified:
-- `src/explorer/explorer_hooks.h` - Added macros
-- `src/explorer/explorer.h` - Added function declarations
-- `src/explorer/explorer.cpp` - Added implementations
-- `src/explorer/explorer_log.h/.cpp` - Added Log_Event function
-- `src/dos/dos_execute.cpp` - Added hooks in DOS_Execute and DOS_Terminate
+### State Save/Restore System ✅ NEW
+Full savestate system for agent exploration:
+
+**New Files:**
+- `src/explorer/explorer_state.h` - State save/restore API
+- `src/explorer/explorer_state.cpp` - Implementation (16 slots, ~16MB per state)
+
+**Features:**
+1. **SaveState(slot, flags)** - Save CPU registers, memory, optional VRAM
+2. **LoadState(slot)** - Restore full emulator state
+3. **Auto-Save on Program Load** - Saves state when game starts
+4. **Auto-Restore on Exit** - When game exits (ESC, menu), restores to continue exploring
+5. **Internal Program Filtering** - Skips DOSBox internal commands (Z: drive programs)
+
+**Environment Variables:**
+```bash
+EXPLORER_AUTO_RESTORE=1     # Enable auto-restore when program exits
+EXPLORER_AUTO_SAVE=1        # Auto-save when program loads
+EXPLORER_RESTORE_SLOT=N     # Slot to use (0-15, default: 0)
+EXPLORER_RESTORE_CODES=0,1  # Exit codes that trigger restore (default: 0)
+```
+
+**How It Works:**
+1. Game loads (e.g., `carma.EXE`) → Auto-saves state to slot 0
+2. Agent explores game, tries actions
+3. User presses ESC or game exits normally (exit code 0)
+4. System detects exit → Restores state from slot 0
+5. Agent continues exploring from saved point
+
+**Log Output Example:**
+```
+[program_load] inst=22 name="carma.EXE" result=success
+[state_save] inst=22 slot=0 pc=0xf13e1 memory=16384KB vram=0KB
+[auto_save] inst=22 Auto-saved state to slot 0 for program "carma.EXE"
+...
+[state_auto_restore] exit_code=0 slot=0 program="carma.EXE"
+[state_load] slot=0 restored_pc=0xf13e1 restored_inst=22
+[auto_restore] Program state restored, continuing execution
+```
 
 ### Game Testing Results
 
 | Game | Type | Status | Notes |
 |------|------|--------|-------|
-| Castle Wolfenstein | Real Mode | ✅ Works | ~1500 coverage, millions of data accesses |
-| Carmageddon Splat Pack | 386 PM (DOS/4GW) | ✅ Works | 3048 coverage, 68M data accesses |
+| Castle Wolfenstein | Real Mode | ✅ Works | ~1500 coverage |
+| Carmageddon Splat Pack | 386 PM (DOS/4GW) | ✅ Works | 3048 coverage, savestate works |
 | Duke Nukem 3D | 386 PM (DOS/4GW) | ❌ Missing Files | Exit code 40, needs GRP file |
 | Heretic | 386 PM (DOS/4GW) | ❌ Missing Files | Missing WAD file |
-
-### Carmageddon Test Metrics (15s run):
-```
-Coverage: 3,048 unique PCs
-Instructions: 1,000,000+ 
-Data accesses: 67,978,339
-Data patterns: 11,605 unique buckets
-DOS/4GW extender: Loaded successfully
-```
-
-### Sample Log Output (Duke3D):
-```
-[program_load] inst=22 name="duke3d.EXE" result=success
-[program_exit] inst=53040 name="duke3d.EXE" exit_code=40 is_tsr=false instructions_executed=53018
-[warning] POSSIBLE ISSUE: Program "duke3d.EXE" exited quickly (after 53018 instructions) with code 40 - may be missing data files
-```
 
 ## All Files in dosbox-staging/src/explorer/:
 - CMakeLists.txt
@@ -63,6 +77,7 @@ DOS/4GW extender: Loaded successfully
 - explorer_log.h/.cpp - Host-side logging, event logging
 - explorer_memory.h/.cpp - RAM/VRAM access
 - explorer_nn.h/.cpp - Neural network policy (LibTorch)
+- explorer_state.h/.cpp - **NEW** State save/restore system
 - explorer_trace.h/.cpp - Instruction trace window
 
 ## DOSBox Integration Points:
@@ -70,18 +85,27 @@ DOS/4GW extender: Loaded successfully
 2. **src/cpu/core_normal.cpp** - EXPLORER_PRE/POST_INSTRUCTION
 3. **src/cpu/cpu.cpp** - EXPLORER_NOTE_INTERRUPT
 4. **src/cpu/paging.h** - EXPLORER_NOTE_READ/WRITE (data tracking)
-5. **src/dos/dos_execute.cpp** - EXPLORER_NOTE_PROGRAM_LOAD/EXIT ⬅️ NEW
+5. **src/dos/dos_execute.cpp** - EXPLORER_NOTE_PROGRAM_LOAD/EXIT
 6. **src/gui/sdl_gui.cpp** - Headless environment setup
 7. **src/dosbox.cpp** - Headless env var handling
 
-## Environment Variables:
+## All Environment Variables:
 ```bash
-EXPLORER_ENABLE=1           # Enable Explorer instrumentation
-EXPLORER_HEADLESS=1         # Run without GUI (SDL dummy drivers)
-EXPLORER_HEADLESS_AUDIO=1   # Keep audio in headless mode
-EXPLORER_FUZZ=1             # Enable random keyboard input fuzzing
-EXPLORER_LOG=path           # Enable logging to file
+# Core instrumentation
+EXPLORER_ENABLE=1           # Enable Explorer
+EXPLORER_HEADLESS=1         # Run without GUI
+EXPLORER_HEADLESS_AUDIO=1   # Keep audio in headless
+EXPLORER_FUZZ=1             # Enable input fuzzing
+
+# Logging
+EXPLORER_LOG=path           # Log file path
 EXPLORER_LOG_EVERY=N        # Log every N instructions
+
+# State save/restore (NEW)
+EXPLORER_AUTO_RESTORE=1     # Auto-restore on exit
+EXPLORER_AUTO_SAVE=1        # Auto-save on load
+EXPLORER_RESTORE_SLOT=N     # Slot to use (0-15)
+EXPLORER_RESTORE_CODES=0,1  # Exit codes triggering restore
 ```
 
 ## Build Commands:
@@ -91,24 +115,23 @@ cmake --build --preset debug-macos
 
 ## Test Commands:
 ```bash
-# Test with program lifecycle logging
-EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 EXPLORER_FUZZ=1 EXPLORER_LOG=/tmp/test.log \
-  timeout 15 ./build/debug-macos/Debug/dosbox \
-  -c "mount c /path/to/game" -c "c:" -c "game"
-
-# Check log for issues
-cat /tmp/test.log | grep -E "program_|warning"
+# Test with auto-save/restore
+EXPLORER_ENABLE=1 EXPLORER_HEADLESS=1 EXPLORER_FUZZ=1 \
+EXPLORER_LOG=/tmp/test.log EXPLORER_AUTO_RESTORE=1 EXPLORER_AUTO_SAVE=1 \
+  timeout 20 ./build/debug-macos/Debug/dosbox \
+  -c "mount c /path/to/game" -c "c:" -c "game.exe"
 ```
 
-## Next Steps (Phase 5):
-- [ ] Profile instrumentation overhead (with/without Explorer)
-- [ ] Test more 386 protected mode games with complete files
-- [ ] Consider dynamic core support (core_dynrec hooks)
+## Next Steps:
+- [ ] Test auto-restore with a game that has a working quit option
+- [ ] Profile instrumentation overhead
+- [ ] Phase 4: Policy/RL Integration (LibTorch PolicyAgent)
 
 ## Key Architecture Decisions:
-- Explorer is a **separate module** that hooks into DOSBox, not a replacement CPU
+- Explorer is a **separate module** that hooks into DOSBox
 - Uses compile-time EXPLORER_ENABLED flag for zero overhead when disabled
-- Program lifecycle logging helps distinguish emulator issues from game issues
+- Savestate stores full memory (~16MB) + CPU state for accurate restoration
+- Internal DOSBox programs (Z: drive) are filtered from auto-save/restore
 - Headless mode uses SDL dummy drivers via environment variables
 - Environment variables checked early (before SDL init) for headless detection
 - All observability APIs are header-only stubs when EXPLORER_ENABLED not defined

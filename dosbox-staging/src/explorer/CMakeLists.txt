@@ -1,7 +1,7 @@
 # Explorer instrumentation module for DOSBox-Staging
 # Provides coverage tracking, edge logging, data access monitoring,
-# headless mode, input injection, memory/register access, and
-# optional LibTorch RL policy integration
+# headless mode, input injection, memory/register access, state save/restore,
+# and optional LibTorch RL policy integration
 
 target_sources(libdosboxcommon PRIVATE
     explorer.cpp
@@ -14,6 +14,7 @@ target_sources(libdosboxcommon PRIVATE
     explorer_cpu.cpp
     explorer_memory.cpp
     explorer_trace.cpp
+    explorer_state.cpp
 )
 
 target_compile_definitions(libdosboxcommon PUBLIC EXPLORER_ENABLED)

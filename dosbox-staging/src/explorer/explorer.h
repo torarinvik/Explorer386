@@ -319,6 +319,10 @@ inline void NotePortOut(uint16_t port, uint16_t val) {
 void NoteProgramLoad(const char* name, bool success);
 void NoteProgramExit(uint8_t exit_code, bool is_tsr);
 
+// Auto-save on program load (used with auto-restore)
+void SetAutoSaveOnLoad(bool enabled);
+bool IsAutoSaveOnLoadEnabled();
+
 inline bool ShouldStop() {
     return GetInstrumenter().IsEnabled() && GetInstrumenter().ShouldStop();
 }

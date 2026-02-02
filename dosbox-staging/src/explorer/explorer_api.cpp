@@ -10,6 +10,7 @@
 #include "explorer_nn.h"
 #include "explorer_log.h"
 #include "explorer_trace.h"
+#include "explorer_state.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -96,6 +97,10 @@ bool InitializeWithConfig(const ExplorerConfig& config) {
 
     // Optional logging (controlled via env vars)
     Log_InitFromEnv();
+    
+    // State save/restore settings (controlled via env vars)
+    State_InitFromEnv();
+    
     return true;
 }
 
