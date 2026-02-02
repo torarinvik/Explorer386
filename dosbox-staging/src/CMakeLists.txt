@@ -1,0 +1,28 @@
+add_subdirectory(audio)
+add_subdirectory(capture)
+add_subdirectory(config)
+add_subdirectory(cpu)
+
+if (OPT_DEBUGGER)
+  add_subdirectory(debugger)
+endif()
+
+add_subdirectory(dos)
+add_subdirectory(fpu)
+add_subdirectory(gui)
+add_subdirectory(hardware)
+add_subdirectory(ints)
+add_subdirectory(libs)
+add_subdirectory(midi)
+add_subdirectory(network)
+add_subdirectory(misc)
+add_subdirectory(shell)
+add_subdirectory(utils)
+
+if (WIN32)
+  add_subdirectory(platform/windows)
+endif()
+
+if (OPT_TESTS)
+  target_sources(dosbox_tests PRIVATE dosbox.cpp)
+endif()
