@@ -155,8 +155,9 @@ Bits CPU_Core_Normal_Run() noexcept
 #endif
 
 #ifdef EXPLORER_ENABLED
+		const uint32_t explorer_prev_phys = core.cseip;
 		// Explorer pre-instruction hook - track coverage before decode
-		EXPLORER_PRE_INSTRUCTION(core.cseip);
+		EXPLORER_PRE_INSTRUCTION(explorer_prev_phys);
 #endif
 
 restart_opcode:
@@ -186,7 +187,7 @@ restart_opcode:
 
 #ifdef EXPLORER_ENABLED
 		// Explorer post-instruction hook
-		EXPLORER_POST_INSTRUCTION();
+		EXPLORER_POST_INSTRUCTION(explorer_prev_phys, core.cseip);
 #endif
 
 		SAVEIP;

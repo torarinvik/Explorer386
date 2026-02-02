@@ -5,6 +5,7 @@ Games3/
 Games4/
 Games5/
 Games6/
+DUKE3D/
 build-explorer/
 # Precompiled Headers
 *.gch
@@ -135,3 +136,4 @@ zlib*
 gvdb*
 !packagefiles/**
 
+vcpkg/
