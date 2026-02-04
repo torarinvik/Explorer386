@@ -150,6 +150,8 @@ public:
     uint64_t GetCoverageHash() const { return coverage_hash_; }
     uint32_t GetRunNewBits() const { return run_new_coverage_; }
     uint32_t GetGlobalNewBits() const { return global_new_bits_; }
+    uint32_t GetGlobalNewCoverage() const { return global_new_coverage_; }
+    bool IsSharedCoverageEnabled() const { return shared_coverage_enabled_; }
     uint64_t GetInstructionCount() const { return inst_counter_; }
     
     // Stall detection queries
@@ -207,9 +209,13 @@ private:
     uint64_t inst_counter_ = 0;
     uint32_t run_new_coverage_ = 0;
     uint32_t global_new_bits_ = 0;
+    uint32_t global_new_coverage_ = 0;  // New coverage across all workers (shared)
     uint32_t last_new_coverage_inst_ = 0;
     uint32_t timer_ticks_ = 0;
     uint64_t coverage_hash_ = 0;
+    
+    // Shared coverage state
+    bool shared_coverage_enabled_ = false;
     
     // Stall detection state
     bool is_stalled_ = false;
@@ -330,6 +336,9 @@ inline bool ShouldStop() {
 inline uint32_t GetCurrentPC() {
     return GetInstrumenter().GetCurrentPC();
 }
+
+// Global variable for tracking previous PC (for edge coverage)
+extern uint32_t g_prev_pc;
 
 } // namespace Explorer
 

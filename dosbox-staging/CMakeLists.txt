@@ -349,24 +349,6 @@ endif()
 # Tests
 option(OPT_TESTS "Enable tests" ON)
 
-# Explorer automated exploration/RL instrumentation
-option(OPT_EXPLORER "Enable Explorer instrumentation for automated game exploration" OFF)
-option(OPT_EXPLORER_LIBTORCH "Enable LibTorch support for Explorer RL policies" OFF)
-
-if (OPT_EXPLORER)
-  set(C_EXPLORER ON)
-  
-  if (OPT_EXPLORER_LIBTORCH)
-    find_package(Torch REQUIRED)
-    if (Torch_FOUND)
-      message(STATUS "LibTorch found: ${TORCH_LIBRARIES}")
-      set(C_EXPLORER_LIBTORCH ON)
-    else()
-      message(WARNING "LibTorch not found, Explorer RL policies disabled")
-    endif()
-  endif()
-endif()
-
 if (OPT_TESTS)
   enable_testing()
 endif()

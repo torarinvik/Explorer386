@@ -81,6 +81,9 @@
 // Define to 1 to enable heavy debugging (requires C_DEBUGGER)
 #mesondefine C_HEAVY_DEBUGGER
 
+// Define to 1 to enable Explorer instrumentation for automated game exploration
+#mesondefine EXPLORER_ENABLED
+
 // Define to 1 to enable MT-32 emulator
 #mesondefine C_MT32EMU
 

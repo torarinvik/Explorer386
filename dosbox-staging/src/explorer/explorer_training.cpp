@@ -16,6 +16,9 @@
 #include <numeric>
 #include <random>
 #include <fstream>
+#include <filesystem>
+#include <chrono>
+#include <thread>
 
 namespace Explorer {
 
@@ -247,12 +250,15 @@ bool PPOTrainer::Init(const TrainingConfig& config) {
         } else {
             device_ = torch::kCPU;
         }
-#else
+#elif defined(USE_CUDA) && USE_CUDA
         if (torch::cuda::is_available()) {
             device_ = torch::kCUDA;
         } else {
             device_ = torch::kCPU;
         }
+#else
+        // CPU-only LibTorch build
+        device_ = torch::kCPU;
 #endif
     } else {
         device_ = torch::kCPU;
@@ -302,10 +308,18 @@ bool PPOTrainer::SaveModel([[maybe_unused]] const std::string& path) {
 
 bool PPOTrainer::LoadModel([[maybe_unused]] const std::string& path) {
 #ifdef EXPLORER_ENABLE_LIBTORCH
-    // For training, we use native PyTorch modules, not TorchScript
-    // This would require serializing/deserializing state_dict
-    // For now, just return false - use checkpoint instead
-    return false;
+    if (!initialized_) return false;
+
+    try {
+        torch::load(model_, path);
+        model_->to(device_);
+        model_->eval();
+        return true;
+    } catch (const c10::Error&) {
+        return false;
+    } catch (...) {
+        return false;
+    }
 #else
     return false;
 #endif
@@ -663,6 +677,48 @@ void StartTraining(const TrainingConfig& config) {
         g_training_active = true;
         g_training_mode = true;
         LOG_MSG("EXPLORER: Training initialized successfully");
+
+        // Resume from a shared model path (if provided) or the per-worker model.pt,
+        // otherwise fall back to checkpoint.
+        try {
+            bool loaded_any = false;
+
+            // Optional load override (useful for multi-worker runs: load merged model
+            // but still save to per-worker model_path).
+            if (const char* load_override = std::getenv("EXPLORER_TRAINING_MODEL_LOAD")) {
+                const std::string load_path = load_override;
+                if (!load_path.empty() && std::filesystem::exists(load_path)) {
+                    if (g_trainer.LoadModel(load_path)) {
+                        LOG_MSG("EXPLORER: Loaded model from %s", load_path.c_str());
+                        loaded_any = true;
+                    } else {
+                        LOG_WARNING("EXPLORER: Failed to load model from %s", load_path.c_str());
+                    }
+                }
+            }
+
+            if (!loaded_any && !config.model_path.empty() && std::filesystem::exists(config.model_path)) {
+                if (g_trainer.LoadModel(config.model_path)) {
+                    LOG_MSG("EXPLORER: Loaded model from %s", config.model_path.c_str());
+                    loaded_any = true;
+                } else {
+                    LOG_WARNING("EXPLORER: Failed to load model from %s", config.model_path.c_str());
+                }
+            }
+
+            if (!loaded_any) {
+                const auto ckpt_model_path = config.checkpoint_path + ".model";
+                if (std::filesystem::exists(ckpt_model_path)) {
+                    if (g_trainer.LoadCheckpoint(config.checkpoint_path)) {
+                        LOG_MSG("EXPLORER: Loaded checkpoint from %s", config.checkpoint_path.c_str());
+                    } else {
+                        LOG_WARNING("EXPLORER: Failed to load checkpoint from %s", config.checkpoint_path.c_str());
+                    }
+                }
+            }
+        } catch (...) {
+            // Ignore filesystem errors.
+        }
     } else {
         LOG_WARNING("EXPLORER: Training initialization failed");
     }
@@ -670,6 +726,164 @@ void StartTraining(const TrainingConfig& config) {
 
 void StopTraining() {
     g_training_active = false;
+
+#ifdef EXPLORER_ENABLE_LIBTORCH
+    // Persist the latest model/checkpoint so runs always emit a tangible artifact.
+    // This is especially useful for short training runs that might not hit the
+    // auto-save interval.
+    if (g_trainer.IsInitialized()) {
+        const auto& cfg = g_trainer.GetConfig();
+
+        if (!cfg.model_path.empty()) {
+            if (g_trainer.SaveModel(cfg.model_path)) {
+                LOG_MSG("EXPLORER: Saved model to %s", cfg.model_path.c_str());
+            } else {
+                LOG_WARNING("EXPLORER: Failed to save model to %s", cfg.model_path.c_str());
+            }
+        }
+
+        // Optional: merge models from multiple workers and save a single merged model.
+        // This is controlled via env vars so it doesn't affect normal single-worker runs.
+        //
+        // EXPLORER_TRAINING_MERGE_OUT=/path/to/model.pt
+        // EXPLORER_TRAINING_MERGE_SOURCES=/p0/model.pt;/p1/model.pt;...
+        // EXPLORER_TRAINING_MERGE_WAIT_SECONDS=60
+        //
+        // Only worker 0 performs the merge to avoid concurrent writers.
+        const char* merge_out_env = std::getenv("EXPLORER_TRAINING_MERGE_OUT");
+        const char* merge_sources_env = std::getenv("EXPLORER_TRAINING_MERGE_SOURCES");
+        const char* worker_id_env = std::getenv("EXPLORER_WORKER_ID");
+
+        const bool is_worker0 = (!worker_id_env || std::string(worker_id_env).empty() ||
+                                std::string(worker_id_env) == "0");
+
+        if (is_worker0 && merge_out_env && merge_sources_env &&
+            std::string(merge_out_env).size() && std::string(merge_sources_env).size()) {
+
+            auto split_paths = [](const std::string& s) {
+                std::vector<std::string> out;
+                std::string cur;
+                for (char c : s) {
+                    if (c == ';' || c == ':') {
+                        if (!cur.empty()) out.push_back(cur);
+                        cur.clear();
+                    } else {
+                        cur.push_back(c);
+                    }
+                }
+                if (!cur.empty()) out.push_back(cur);
+                return out;
+            };
+
+            int wait_seconds = 60;
+            if (const char* wait_env = std::getenv("EXPLORER_TRAINING_MERGE_WAIT_SECONDS")) {
+                try {
+                    const int v = std::stoi(wait_env);
+                    if (v >= 0) wait_seconds = v;
+                } catch (...) {
+                    // Ignore invalid.
+                }
+            }
+
+            const std::string merge_out_path = merge_out_env;
+            const auto source_paths = split_paths(merge_sources_env);
+
+            if (source_paths.size() >= 2) {
+                LOG_MSG("EXPLORER: Merging %zu models -> %s (wait=%ds)",
+                        source_paths.size(), merge_out_path.c_str(), wait_seconds);
+
+                // Wait briefly for other workers to save their models.
+                const auto deadline = std::chrono::steady_clock::now() +
+                                      std::chrono::seconds(wait_seconds);
+
+                std::vector<std::string> ready_paths;
+                ready_paths.reserve(source_paths.size());
+
+                for (const auto& p : source_paths) {
+                    while (std::chrono::steady_clock::now() < deadline) {
+                        std::error_code ec;
+                        if (std::filesystem::exists(p, ec)) break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    }
+                    std::error_code ec;
+                    if (std::filesystem::exists(p, ec)) {
+                        ready_paths.push_back(p);
+                    } else {
+                        LOG_WARNING("EXPLORER: Merge source missing: %s", p.c_str());
+                    }
+                }
+
+                if (ready_paths.size() >= 2) {
+                    try {
+                        torch::NoGradGuard no_grad;
+
+                        auto merged = PolicyValueNet(cfg);
+                        merged->to(torch::kCPU);
+                        merged->eval();
+
+                        auto merged_params = merged->parameters();
+                        for (auto& t : merged_params) {
+                            t.zero_();
+                        }
+
+                        const auto num_params = merged_params.size();
+                        size_t used_models = 0;
+
+                        // Load and accumulate sequentially to avoid holding many
+                        // (potentially huge) models in memory at once.
+                        for (const auto& p : ready_paths) {
+                            auto tmp = PolicyValueNet(cfg);
+                            torch::load(tmp, p);
+                            tmp->to(torch::kCPU);
+                            tmp->eval();
+
+                            auto params = tmp->parameters();
+                            if (params.size() != num_params) {
+                                LOG_WARNING("EXPLORER: Merge skipped (param count mismatch)");
+                                continue;
+                            }
+                            bool ok = true;
+                            for (size_t i = 0; i < num_params; i++) {
+                                if (!params[i].defined() || params[i].sizes() != merged_params[i].sizes()) {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                            if (!ok) {
+                                LOG_WARNING("EXPLORER: Merge skipped (param shape mismatch)");
+                                continue;
+                            }
+                            for (size_t i = 0; i < num_params; i++) {
+                                merged_params[i].add_(params[i]);
+                            }
+                            used_models++;
+                        }
+
+                        if (used_models >= 2) {
+                            for (auto& t : merged_params) {
+                                t.div_(static_cast<double>(used_models));
+                            }
+                            torch::save(merged, merge_out_path);
+                            LOG_MSG("EXPLORER: Saved merged model to %s (n=%zu)",
+                                    merge_out_path.c_str(), used_models);
+                        } else {
+                            LOG_WARNING("EXPLORER: Merge aborted (need >= 2 compatible models)");
+                        }
+                    } catch (const c10::Error&) {
+                        LOG_WARNING("EXPLORER: Merge failed (torch error)");
+                    } catch (...) {
+                        LOG_WARNING("EXPLORER: Merge failed (unknown error)");
+                    }
+                } else {
+                    LOG_WARNING("EXPLORER: Merge aborted (need >= 2 source models)");
+                }
+            } else {
+                LOG_WARNING("EXPLORER: Merge aborted (need >= 2 sources)");
+            }
+        }
+    }
+#endif
+
     g_trainer.Shutdown();
 }
 
@@ -776,6 +990,11 @@ void Training_InitFromEnv() {
     
     if (const char* steps = std::getenv("EXPLORER_TRAINING_STEPS")) {
         config.steps_per_update = std::stoul(steps);
+    }
+
+    if (const char* save_int = std::getenv("EXPLORER_TRAINING_SAVE_INTERVAL")) {
+        config.save_interval = static_cast<uint32_t>(std::stoul(save_int));
+        LOG_MSG("EXPLORER: Training save_interval=%u", config.save_interval);
     }
     
     if (const char* model = std::getenv("EXPLORER_TRAINING_MODEL")) {

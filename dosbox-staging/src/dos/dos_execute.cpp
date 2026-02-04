@@ -21,10 +21,6 @@
 #include "programs/setver.h"
 #include "utils/string_utils.h"
 
-#ifdef EXPLORER_ENABLED
-#include "explorer/explorer_hooks.h"
-#endif
-
 #ifdef _MSC_VER
 #pragma pack(1)
 #endif
@@ -118,9 +114,6 @@ void DOS_ClearLaunchedProgramNames()
 void DOS_Terminate(const uint16_t psp_seg, const bool is_terminate_and_stay_resident,
                    const uint8_t exit_code)
 {
-	// Log program exit for Explorer instrumentation
-	EXPLORER_NOTE_PROGRAM_EXIT(exit_code, is_terminate_and_stay_resident);
-
 	erase_canonical_name(psp_seg);
 
 	dos.return_code = exit_code;
@@ -313,13 +306,8 @@ bool DOS_Execute(char * name,PhysPt block_pt,uint8_t flags) {
 	bool iscom=false;
 	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) {
 		DOS_SetError(DOSERR_FILE_NOT_FOUND);
-		EXPLORER_NOTE_PROGRAM_LOAD(name, false);  // Log failed load
 		return false;
 	}
-	
-	// Log successful file open - program is beginning to load
-	EXPLORER_NOTE_PROGRAM_LOAD(name, true);
-	
 	len=sizeof(EXE_Header);
 	if (!DOS_ReadFile(fhandle,(uint8_t *)&head,&len)) {
 		DOS_CloseFile(fhandle);

@@ -22,8 +22,9 @@
 #endif
 
 #ifdef EXPLORER_ENABLED
-#include "explorer/explorer_hooks.h"
+#include "explorer/explorer.h"
 #endif
+
 
 #if (!C_CORE_INLINE)
 #define LoadMb(off) mem_readb(off)
@@ -138,6 +139,16 @@ Bits CPU_Core_Normal_Run() noexcept
 {
 	while (CPU_Cycles-->0) {
 		LOADIP;
+#ifdef EXPLORER_ENABLED
+		// Explorer instrumentation: track coverage before instruction execution
+		{
+			PhysPt phys_pc = core.cseip;
+			if (cpu.pmode && (cpu.cr0 & CR0_PAGING)) {
+				phys_pc = PAGING_GetPhysicalAddress(phys_pc);
+			}
+			Explorer::PreInstruction(static_cast<uint32_t>(phys_pc));
+		}
+#endif
 		core.opcode_index=cpu.code.big*0x200;
 		core.prefixes=cpu.code.big;
 		core.ea_table=&EATable[cpu.code.big*256];
@@ -153,13 +164,6 @@ Bits CPU_Core_Normal_Run() noexcept
 #endif
 		cycle_count++;
 #endif
-
-#ifdef EXPLORER_ENABLED
-		const uint32_t explorer_prev_phys = core.cseip;
-		// Explorer pre-instruction hook - track coverage before decode
-		EXPLORER_PRE_INSTRUCTION(explorer_prev_phys);
-#endif
-
 restart_opcode:
 		switch (core.opcode_index+Fetchb()) {
 		#include "core_normal/prefix_none.h"
@@ -184,12 +188,16 @@ restart_opcode:
 			CPU_Exception(6,0);
 			continue;
 		}
-
 #ifdef EXPLORER_ENABLED
-		// Explorer post-instruction hook
-		EXPLORER_POST_INSTRUCTION(explorer_prev_phys, core.cseip);
+		// Explorer instrumentation: track edge after instruction execution
+		{
+			PhysPt phys_pc = core.cseip;
+			if (cpu.pmode && (cpu.cr0 & CR0_PAGING)) {
+				phys_pc = PAGING_GetPhysicalAddress(phys_pc);
+			}
+			Explorer::PostInstruction(Explorer::g_prev_pc, static_cast<uint32_t>(phys_pc));
+		}
 #endif
-
 		SAVEIP;
 	}
 	FillFlags();

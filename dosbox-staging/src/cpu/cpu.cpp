@@ -26,10 +26,6 @@
 #include "utils/math_utils.h"
 #include "utils/string_utils.h"
 
-#ifdef EXPLORER_ENABLED
-#include "explorer/explorer_hooks.h"
-#endif
-
 #if 1
 	#undef LOG
 	#if defined(_MSC_VER)
@@ -745,11 +741,6 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 		return;
 	}
 	last_interrupt = num;
-
-#ifdef EXPLORER_ENABLED
-	// Explorer interrupt hook - track interrupt vector access
-	EXPLORER_NOTE_INTERRUPT(static_cast<uint8_t>(num));
-#endif
 
 	FillFlags();
 #if C_DEBUGGER

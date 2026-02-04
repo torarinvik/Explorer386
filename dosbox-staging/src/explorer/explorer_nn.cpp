@@ -120,12 +120,15 @@ bool PolicyNetwork::Init(const PolicyConfig& config) {
         } else {
             device_ = torch::kCPU;
         }
-#else
+#elif defined(USE_CUDA) && USE_CUDA
         if (torch::cuda::is_available()) {
             device_ = torch::kCUDA;
         } else {
             device_ = torch::kCPU;
         }
+#else
+        // CPU-only LibTorch build
+        device_ = torch::kCPU;
 #endif
     } else {
         device_ = torch::kCPU;

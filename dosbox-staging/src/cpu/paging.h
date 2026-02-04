@@ -11,10 +11,6 @@
 #include "debugger/debugger.h"
 #include "hardware/memory.h"
 
-#ifdef EXPLORER_ENABLED
-#include "explorer/explorer_data.h"
-#endif
-
 // disable this to reduce the size of the TLB
 // NOTE: does not work with the dynamic core (dynrec is fine)
 #define USE_FULL_TLB
@@ -341,9 +337,6 @@ static inline uint8_t mem_readb_inline(const PhysPt address)
 	if constexpr (op_mode == MemOpMode::WithBreakpoints) {
 		DEBUG_UpdateMemoryReadBreakpoints<uint8_t>(address);
 	}
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteRead(address, 1, 0);
-#endif
 	HostPt tlb_addr = get_tlb_read(address);
 	if (tlb_addr) {
 		return host_readb(tlb_addr + address);
@@ -358,9 +351,6 @@ static inline uint16_t mem_readw_inline(const PhysPt address)
 	if constexpr (op_mode == MemOpMode::WithBreakpoints) {
 		DEBUG_UpdateMemoryReadBreakpoints<uint16_t>(address);
 	}
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteRead(address, 2, 0);
-#endif
 	if ((address & 0xfff) < 0xfff) {
 		HostPt tlb_addr = get_tlb_read(address);
 		if (tlb_addr) {
@@ -379,9 +369,6 @@ static inline uint32_t mem_readd_inline(const PhysPt address)
 	if constexpr (op_mode == MemOpMode::WithBreakpoints) {
 		DEBUG_UpdateMemoryReadBreakpoints<uint32_t>(address);
 	}
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteRead(address, 4, 0);
-#endif
 	if ((address & 0xfff) < 0xffd) {
 		HostPt tlb_addr = get_tlb_read(address);
 		if (tlb_addr)
@@ -399,9 +386,6 @@ static inline uint64_t mem_readq_inline(PhysPt address)
 	if constexpr (op_mode == MemOpMode::WithBreakpoints) {
 		DEBUG_UpdateMemoryReadBreakpoints<uint64_t>(address);
 	}
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteRead(address, 8, 0);
-#endif
 	if ((address & 0xfff) < 0xff9) {
 		HostPt tlb_addr = get_tlb_read(address);
 		if (tlb_addr) {
@@ -416,18 +400,12 @@ static inline uint64_t mem_readq_inline(PhysPt address)
 
 static inline void mem_writeb_inline(PhysPt address, uint8_t val)
 {
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteWrite(address, 1, 0);
-#endif
 	HostPt tlb_addr = get_tlb_write(address);
 	if (tlb_addr) host_writeb(tlb_addr+address,val);
 	else (get_tlb_writehandler(address))->writeb(address,val);
 }
 
 static inline void mem_writew_inline(PhysPt address,uint16_t val) {
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteWrite(address, 2, 0);
-#endif
 	if ((address & 0xfff)<0xfff) {
 		HostPt tlb_addr=get_tlb_write(address);
 		if (tlb_addr) host_writew(tlb_addr+address,val);
@@ -436,9 +414,6 @@ static inline void mem_writew_inline(PhysPt address,uint16_t val) {
 }
 
 static inline void mem_writed_inline(PhysPt address,uint32_t val) {
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteWrite(address, 4, 0);
-#endif
 	if ((address & 0xfff)<0xffd) {
 		HostPt tlb_addr=get_tlb_write(address);
 		if (tlb_addr) host_writed(tlb_addr+address,val);
@@ -448,9 +423,6 @@ static inline void mem_writed_inline(PhysPt address,uint32_t val) {
 
 static inline void mem_writeq_inline(PhysPt address, uint64_t val)
 {
-#ifdef EXPLORER_ENABLED
-	Explorer::DataNoteWrite(address, 8, 0);
-#endif
 	if ((address & 0xfff) < 0xff9) {
 		HostPt tlb_addr = get_tlb_write(address);
 		if (tlb_addr) {

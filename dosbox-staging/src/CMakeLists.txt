@@ -7,11 +7,6 @@ if (OPT_DEBUGGER)
   add_subdirectory(debugger)
 endif()
 
-# Explorer instrumentation for automated exploration/RL
-if (OPT_EXPLORER)
-  add_subdirectory(explorer)
-endif()
-
 add_subdirectory(dos)
 add_subdirectory(fpu)
 add_subdirectory(gui)

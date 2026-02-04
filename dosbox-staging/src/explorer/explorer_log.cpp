@@ -7,6 +7,7 @@
 #include "explorer_data.h"
 #include "explorer_trace.h"
 #include "explorer_memory.h"
+#include "explorer_shared.h"
 
 #include <chrono>
 #include <cctype>
@@ -84,6 +85,11 @@ static void write_snapshot_line(const char* reason)
 	g_log << " pc=0x" << std::hex << inst.GetCurrentPC() << std::dec;
 	g_log << " run_new_cov=" << inst.GetRunNewBits();
 	g_log << " global_new_cov=" << inst.GetGlobalNewBits();
+	if (inst.IsSharedCoverageEnabled() && GetSharedCoverage().IsInitialized()) {
+		g_log << " shared_cov=" << GetSharedCoverage().GetTotalCoverage();
+		g_log << " shared_workers=" << GetSharedCoverage().GetWorkerCount();
+		g_log << " shared_new_by_me=" << inst.GetGlobalNewCoverage();
+	}
 	g_log << " data_accesses=" << data.GetTotalAccesses();
 	g_log << " data_run_new=" << data.GetRunNewBits();
 	g_log << " data_global_new=" << data.GetGlobalNewBits();

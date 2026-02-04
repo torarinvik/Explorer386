@@ -238,3 +238,17 @@ option(
     value: false,
     description: 'Time build events, for use with the Clang Build Analyzer tool',
 )
+
+option(
+    'enable_explorer',
+    type: 'boolean',
+    value: false,
+    description: 'Enable Explorer instrumentation for automated game exploration and RL training',
+)
+
+option(
+    'explorer_libtorch_path',
+    type: 'string',
+    value: '',
+    description: 'Path to LibTorch installation for Explorer NN policy',
+)

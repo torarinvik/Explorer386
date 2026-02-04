@@ -14,16 +14,30 @@
 #include "explorer_trace.h"
 #include "explorer_state.h"
 #include "hardware/timer.h"  // For TIMER_AddTickHandler
+#include "dosbox.h"          // For DOSBOX_RequestShutdown
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <chrono>
 
 namespace Explorer {
 
 // Tick handler called by PIC timer (~1000 Hz)
 static uint64_t s_tick_count = 0;
+
+// Optional graceful shutdown after N seconds (from env)
+static bool s_shutdown_after_armed = false;
+static std::chrono::steady_clock::time_point s_shutdown_after_start_time;
+static std::chrono::seconds s_shutdown_after_duration{0};
+
 static void ExplorerTickHandler() {
     s_tick_count++;
+
+    if (s_shutdown_after_armed && s_shutdown_after_duration.count() > 0 &&
+        (std::chrono::steady_clock::now() - s_shutdown_after_start_time) >= s_shutdown_after_duration) {
+        s_shutdown_after_armed = false;
+        DOSBOX_RequestShutdown();
+    }
     
     // Log occasionally to confirm tick handler is being called
     if (s_tick_count % 5000 == 0) {
@@ -70,6 +84,26 @@ static uint64_t g_last_tick = 0;
 // =============================================================================
 // Initialization
 // =============================================================================
+
+static void ShutdownAfter_InitFromEnv()
+{
+    // Seconds after which we request a graceful shutdown of the emulator.
+    // This avoids relying on signals (SIGTERM/SIGINT), which can bypass
+    // Explorer shutdown hooks and prevent saving model artifacts.
+    if (const char *s = std::getenv("EXPLORER_SHUTDOWN_AFTER_SECONDS")) {
+        try {
+            const auto seconds = std::stoull(s);
+            if (seconds > 0) {
+                s_shutdown_after_armed = true;
+                s_shutdown_after_start_time = std::chrono::steady_clock::now();
+                s_shutdown_after_duration = std::chrono::seconds(seconds);
+                LOG_MSG("EXPLORER: Will request shutdown after %llu seconds", seconds);
+            }
+        } catch (...) {
+            // Ignore invalid values
+        }
+    }
+}
 
 bool Initialize() {
     ExplorerConfig default_config;
@@ -147,6 +181,8 @@ bool InitializeWithConfig(const ExplorerConfig& config) {
 
     // Register tick handler for periodic updates (~1000 Hz)
     TIMER_AddTickHandler(ExplorerTickHandler);
+
+    ShutdownAfter_InitFromEnv();
     
     // Optional logging (controlled via env vars)
     Log_InitFromEnv();

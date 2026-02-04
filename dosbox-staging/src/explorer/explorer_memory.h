@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #ifdef EXPLORER_ENABLED

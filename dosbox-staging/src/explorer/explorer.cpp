@@ -8,11 +8,17 @@
 #include "explorer_state.h"
 #include "explorer_training.h"
 #include "explorer_data.h"
+#include "explorer_shared.h"
 
 #include <cstring>
 #include <algorithm>
+#include <cstdlib>
+#include <cstdio>
 
 namespace Explorer {
+
+// Global variable for tracking previous PC (for edge coverage)
+uint32_t g_prev_pc = 0;
 
 // =============================================================================
 // Stop Reason Names
@@ -72,6 +78,18 @@ bool Instrumenter::Init(const Config& config) {
         event_ring_.resize(std::min(config_.trace_length, 8192u));
     }
     
+    // Initialize shared coverage for multi-worker training
+    const char* shm_name = std::getenv("EXPLORER_SHARED_NAME");
+    const char* worker_id_str = std::getenv("EXPLORER_WORKER_ID");
+    if (shm_name && worker_id_str) {
+        int worker_id = std::atoi(worker_id_str);
+        if (GetSharedCoverage().Init(shm_name, worker_id)) {
+            shared_coverage_enabled_ = true;
+            // Log to stderr since explorer_log uses different format
+            fprintf(stderr, "Instrumenter: Shared coverage enabled (worker %d)\n", worker_id);
+        }
+    }
+    
     // Initialize loop tracking
     ResetLoopTracking();
     
@@ -80,6 +98,12 @@ bool Instrumenter::Init(const Config& config) {
 }
 
 void Instrumenter::Shutdown() {
+    // Shutdown shared coverage
+    if (shared_coverage_enabled_) {
+        GetSharedCoverage().Shutdown();
+        shared_coverage_enabled_ = false;
+    }
+    
     global_coverage_.reset();
     run_coverage_.reset();
     run_touched_.clear();
@@ -147,10 +171,18 @@ bool Instrumenter::NoteCoveragePhys(uint32_t phys) {
         run_coverage_[idx] = 1;
         run_touched_.push_back(idx);
         
+        // Check local global coverage
         if (global_coverage_[idx] == 0) {
             global_coverage_[idx] = 1;
             run_new_coverage_++;
             last_new_coverage_inst_ = static_cast<uint32_t>(inst_counter_);
+            
+            // Also update shared coverage if enabled
+            if (shared_coverage_enabled_) {
+                if (GetSharedCoverage().TryMarkSeen(phys)) {
+                    global_new_coverage_++;  // Globally new across all workers
+                }
+            }
             return true;
         }
     }
@@ -170,6 +202,13 @@ bool Instrumenter::NoteCoverageEdge(uint32_t src, uint32_t dst) {
             global_coverage_[idx] = 1;
             run_new_coverage_++;
             last_new_coverage_inst_ = static_cast<uint32_t>(inst_counter_);
+            
+            // Also update shared coverage if enabled
+            if (shared_coverage_enabled_) {
+                if (GetSharedCoverage().TryMarkSeen(edge)) {
+                    global_new_coverage_++;  // Globally new across all workers
+                }
+            }
             return true;
         }
     }

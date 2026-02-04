@@ -11,12 +11,6 @@
 #include <limits>
 #include <memory>
 
-#ifdef EXPLORER_ENABLED
-#include "explorer/explorer_api.h"
-#include "explorer/explorer_log.h"
-#include "explorer/explorer_headless.h"
-#endif
-
 #ifdef WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -77,6 +71,10 @@
 #include "shell/autoexec.h"
 #include "shell/shell.h"
 #include "utils/math_utils.h"
+
+#ifdef EXPLORER_ENABLED
+#include "explorer/explorer_api.h"
+#endif
 
 MachineType machine   = MachineType::None;
 SvgaType    svga_type = SvgaType::None;
@@ -1108,55 +1106,6 @@ void DOSBOX_InitModules()
 {
 	DOSBOX_Init();
 
-#ifdef EXPLORER_ENABLED
-	// Setup headless mode via environment variable.
-	// Set EXPLORER_HEADLESS=1 to run without GUI (for automated testing/fuzzing).
-	// This must happen before SDL is initialized (done in GFX_InitSdl).
-	if (const auto* headless_env = std::getenv("EXPLORER_HEADLESS"); headless_env) {
-		const bool headless = (headless_env[0] == '1' || headless_env[0] == 't' ||
-		                       headless_env[0] == 'T' || headless_env[0] == 'y' ||
-		                       headless_env[0] == 'Y');
-		if (headless) {
-			Explorer::HeadlessConfig config;
-			config.enabled = true;
-			
-			// Check for optional audio disable
-			if (const auto* audio_env = std::getenv("EXPLORER_HEADLESS_AUDIO"); audio_env) {
-				config.disable_audio = !(audio_env[0] == '1' || audio_env[0] == 't' ||
-				                         audio_env[0] == 'T' || audio_env[0] == 'y' ||
-				                         audio_env[0] == 'Y');
-			}
-			
-			Explorer::EnableHeadless(config);
-		}
-	}
-
-	// Runtime-enable Explorer via environment variable to keep default builds fast.
-	// Set EXPLORER_ENABLE=1 to activate instrumentation.
-	if (const auto* enable_env = std::getenv("EXPLORER_ENABLE"); enable_env) {
-		const bool enabled = (enable_env[0] == '1' || enable_env[0] == 't' ||
-		                      enable_env[0] == 'T' || enable_env[0] == 'y' ||
-		                      enable_env[0] == 'Y');
-		if (enabled) {
-			Explorer::Initialize();
-			if (Explorer::Log_IsEnabled()) {
-				LOG_MSG("Explorer logging to %s", Explorer::Log_GetPath().c_str());
-			}
-			
-			// Check if fuzzing is enabled via EXPLORER_FUZZ=1
-			if (const auto* fuzz_env = std::getenv("EXPLORER_FUZZ"); fuzz_env) {
-				const bool fuzz_enabled = (fuzz_env[0] == '1' || fuzz_env[0] == 't' ||
-				                           fuzz_env[0] == 'T' || fuzz_env[0] == 'y' ||
-				                           fuzz_env[0] == 'Y');
-				if (fuzz_enabled) {
-					Explorer::EnableFuzzing(true);
-					LOG_MSG("EXPLORER: Input fuzzing enabled");
-				}
-			}
-		}
-	}
-#endif
-
 #if C_DEBUGGER
 	LOG_StartUp();
 	LOG_Init();
@@ -1204,11 +1153,19 @@ void DOSBOX_InitModules()
 	VMWARE_Init();
 
 	AUTOEXEC_Init();
+
+#ifdef EXPLORER_ENABLED
+	// Initialize Explorer instrumentation/training subsystem
+	if (!Explorer::Initialize()) {
+		LOG_WARNING("EXPLORER: Failed to initialize Explorer subsystem");
+	} else {
+		LOG_MSG("EXPLORER: Subsystem initialized successfully");
+	}
+#endif
 }
 
 void DOSBOX_DestroyModules()
 {
-
 #ifdef EXPLORER_ENABLED
 	Explorer::Shutdown();
 #endif

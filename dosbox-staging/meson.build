@@ -446,6 +446,11 @@ if get_option('enable_debugger') == 'heavy'
     conf_data.set10('C_HEAVY_DEBUGGER', true)
 endif
 
+if get_option('enable_explorer')
+    conf_data.set10('EXPLORER_ENABLED', true)
+    add_project_arguments('-DEXPLORER_ENABLED', language: 'cpp')
+endif
+
 if cc.has_function('clock_gettime', prefix: '#include <time.h>')
     conf_data.set10('HAVE_CLOCK_GETTIME', true)
 endif
@@ -1207,6 +1212,15 @@ subdir('src/ints')
 subdir('src/midi')
 subdir('src/shell')
 subdir('src/utils')
+
+# Explorer instrumentation (optional)
+if get_option('enable_explorer')
+    subdir('src/explorer')
+    internal_deps += libexplorer_dep
+    summary('Explorer instrumentation', true)
+else
+    summary('Explorer instrumentation', false)
+endif
 
 # debugger-specific libs
 if get_option('enable_debugger') != 'none'
